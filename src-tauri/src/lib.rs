@@ -351,7 +351,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![greet, file_icon, quit, device_name, set_prefs, free_path, append_log, open_log_dir, mcp::mcp_ready, mcp::mcp_respond, localfs::read_local_file, localfs::recent_files, localfs::real_path, localfs::write_local_file, nearby::nearby_start, nearby::nearby_stop, nearby::nearby_peers, nearby::nearby_offers, nearby::nearby_send, nearby::nearby_answer, nearby::nearby_cancel, nearby::nearby_cleanup, nearby::nearby_open_settings])
+        .invoke_handler(tauri::generate_handler![greet, file_icon, quit, device_name, set_prefs, free_path, append_log, open_log_dir, mcp::mcp_ready, mcp::mcp_respond, localfs::read_local_file, localfs::recent_files, localfs::real_path, localfs::write_local_file, localfs::list_upload_files, localfs::read_local_range, nearby::nearby_start, nearby::nearby_stop, nearby::nearby_peers, nearby::nearby_offers, nearby::nearby_send, nearby::nearby_answer, nearby::nearby_cancel, nearby::nearby_cleanup, nearby::nearby_open_settings])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {

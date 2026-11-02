@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./xhrUpload", () => ({ xhrUpload: vi.fn(async () => "ok") }));
+const invokeMock = vi.fn(async (_cmd: string, a: { start: number; len: number }) => new Uint8Array(a.len).fill(a.start).buffer);
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("./chunk", async (orig) => ({ ...(await orig<typeof import("./chunk")>()), CHUNK_SIZE: 8 }));
 
 import { SeafileProvider } from "./SeafileProvider";
@@ -30,6 +32,20 @@ beforeEach(() => xhr.mockClear());
 afterEach(() => fetchMock.mockReset());
 
 describe("SeafileProvider.upload", () => {
+  it("reads a disk-path file chunk by chunk from the app", async () => {
+    server(0);
+    const file = { name: "big.bin", size: 20, lastModified: 1, localPath: "/home/a/big.bin" };
+    await p().upload("r", { file, targetDir: "/d", relativePath: "사진" }, () => {});
+    expect(invokeMock.mock.calls.map((c) => c[1])).toEqual([
+      { path: "/home/a/big.bin", start: 0, len: 8 },
+      { path: "/home/a/big.bin", start: 8, len: 8 },
+      { path: "/home/a/big.bin", start: 16, len: 4 },
+    ]);
+    const blob = (xhr.mock.calls[2][1] as FormData).get("file") as File;
+    expect([blob.name, blob.size]).toEqual(["big.bin", 4]);
+    expect(headersOf(2)["Content-Range"]).toBe("bytes 16-19/20");
+  });
+
   it("single post for small file", async () => {
     server(0);
     await p().upload("r", { file: fileOf(5), targetDir: "/d" }, () => {});

@@ -37,6 +37,8 @@
     "allow-recent-files",
     "allow-real-path",
     "allow-write-local-file",
+    "allow-list-upload-files",
+    "allow-read-local-range",
     "allow-nearby-start",
     "allow-nearby-stop",
     "allow-nearby-peers",

@@ -27,18 +27,19 @@ function save(set: Set<string>) {
   if (!s) return;
   s.setItem(KEY, JSON.stringify([...set]));
 }
-const keyOf = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+type FileKey = { name: string; size: number; lastModified: number };
+const keyOf = (f: FileKey) => `${f.name}|${f.size}|${f.lastModified}`;
 
-export function markInterrupted(f: File): void {
+export function markInterrupted(f: FileKey): void {
   const set = load();
   set.add(keyOf(f));
   save(set);
 }
-export function clearInterrupted(f: File): void {
+export function clearInterrupted(f: FileKey): void {
   const set = load();
   set.delete(keyOf(f));
   save(set);
 }
-export function isInterrupted(f: File): boolean {
+export function isInterrupted(f: FileKey): boolean {
   return load().has(keyOf(f));
 }

@@ -26,8 +26,16 @@ export interface Entry {
   path: string;
 }
 
+/** PC 디스크의 파일(데스크톱 앱의 폴더 업로드·Linux 끌어다 놓기). 내용은 올릴 때 조각씩 읽는다 */
+export interface PathFile {
+  name: string;
+  size: number;
+  lastModified: number;
+  localPath: string;
+}
+
 export interface UploadTask {
-  file: File;
+  file: File | PathFile;
   targetDir: string;
   /** 폴더 드롭 시 targetDir 아래 하위 경로 ('a/b') */
   relativePath?: string;

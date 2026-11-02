@@ -15,6 +15,8 @@ const COMMANDS: &[&str] = &[
     "recent_files",
     "real_path",
     "write_local_file",
+    "list_upload_files",
+    "read_local_range",
     "nearby_start",
     "nearby_stop",
     "nearby_peers",

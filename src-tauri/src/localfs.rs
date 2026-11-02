@@ -94,6 +94,61 @@ pub fn recent_files(dir: String, limit: usize) -> Result<Vec<LocalFile>, String>
     list_recent(Path::new(&dir), limit)
 }
 
+/// 업로드할 로컬 파일. dir = 고른·끌어다 놓은 항목 기준 하위 폴더("" 또는 "사진/2026")
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadFile {
+    path: String,
+    name: String,
+    dir: String,
+    size: u64,
+    /// 유닉스 초
+    mtime: f64,
+}
+
+/// 파일·폴더 경로들을 업로드할 파일 목록으로 펼친다. 폴더는 그 폴더 이름부터 하위 경로가 된다.
+/// 링크된 폴더는 따라가지 않는다(순환 방지). 링크된 파일은 가리키는 파일을 올린다. 빈 폴더는 만들지 않는다
+fn expand_uploads(paths: &[String]) -> Vec<UploadFile> {
+    fn walk(p: &Path, dir: &str, out: &mut Vec<UploadFile>) {
+        let Ok(lm) = std::fs::symlink_metadata(p) else { return };
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if lm.is_dir() {
+            let sub = if dir.is_empty() { name } else { format!("{dir}/{name}") };
+            for e in std::fs::read_dir(p).into_iter().flatten().flatten() {
+                walk(&e.path(), &sub, out);
+            }
+        } else if let Some(m) = std::fs::metadata(p).ok().filter(|m| m.is_file()) {
+            let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs_f64()).unwrap_or_default();
+            out.push(UploadFile { path: p.to_string_lossy().into_owned(), name, dir: dir.to_string(), size: m.len(), mtime });
+        }
+    }
+    let mut out = Vec::new();
+    for p in paths {
+        walk(Path::new(p), "", &mut out);
+    }
+    out
+}
+
+#[tauri::command]
+pub async fn list_upload_files(paths: Vec<String>) -> Vec<UploadFile> {
+    expand_uploads(&paths)
+}
+
+/// 업로드 조각: path의 start부터 len바이트(파일 끝이면 그보다 짧게)
+fn read_range(path: &Path, start: u64, len: u64) -> Result<Vec<u8>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    f.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+    let mut buf = Vec::with_capacity(len.min(READ_CAP) as usize);
+    f.take(len.min(READ_CAP)).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    Ok(buf)
+}
+
+#[tauri::command]
+pub async fn read_local_range(path: String, start: u64, len: u64) -> Result<tauri::ipc::Response, String> {
+    read_range(Path::new(&path), start, len).map(tauri::ipc::Response::new)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +159,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn expand_uploads_keeps_folder_structure() {
+        let d = temp_dir("expand");
+        std::fs::create_dir_all(d.join("사진/2026")).unwrap();
+        std::fs::create_dir_all(d.join("사진/빈 폴더")).unwrap();
+        std::fs::write(d.join("사진/a.jpg"), "12").unwrap();
+        std::fs::write(d.join("사진/2026/b.jpg"), "123").unwrap();
+        std::fs::write(d.join("메모.txt"), "1").unwrap();
+        let paths = [d.join("사진"), d.join("메모.txt"), d.join("없는 파일")].map(|p| p.to_string_lossy().into_owned());
+        let mut got: Vec<_> = expand_uploads(&paths).into_iter().map(|f| (f.dir, f.name, f.size)).collect();
+        got.sort();
+        assert_eq!(got, [("".into(), "메모.txt".into(), 1), ("사진".into(), "a.jpg".into(), 2), ("사진/2026".into(), "b.jpg".into(), 3)]);
+    }
+
+    #[test]
+    fn read_range_reads_slice_and_stops_at_end() {
+        let p = temp_dir("range").join("x.bin");
+        std::fs::write(&p, b"0123456789").unwrap();
+        assert_eq!(read_range(&p, 2, 3).unwrap(), b"234");
+        assert_eq!(read_range(&p, 8, 5).unwrap(), b"89");
     }
 
     #[test]

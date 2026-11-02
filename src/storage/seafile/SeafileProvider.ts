@@ -3,6 +3,7 @@ import { joinPath } from "../path";
 import type { DeviceInfo } from "../device";
 import { SeafileApi } from "./api";
 import { CHUNK_SIZE, chunkRanges } from "./chunk";
+import { sliceOf } from "../localFile";
 import { clearInterrupted, isInterrupted, markInterrupted } from "./resumeRegistry";
 import { xhrUpload } from "./xhrUpload";
 
@@ -137,7 +138,7 @@ export class SeafileProvider implements StorageProvider {
 
     const ranges = chunkRanges(size, uploaded, CHUNK_SIZE);
     if (ranges.length === 0) {
-      await xhrUpload(link, form(file), {}, progress, signal);
+      await xhrUpload(link, form(await sliceOf(file, 0, size)), {}, progress, signal);
       onProgress(size, size);
       return;
     }
@@ -147,7 +148,8 @@ export class SeafileProvider implements StorageProvider {
     for (const { start, end } of ranges) {
       throwIfAborted();
       const headers = { "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Disposition": disposition };
-      const send = () => xhrUpload(link, form(file.slice(start, end + 1)), headers, (sent) => progress(start + sent), signal);
+      const blob = await sliceOf(file, start, end + 1);
+      const send = () => xhrUpload(link, form(blob), headers, (sent) => progress(start + sent), signal);
       try {
         await send();
       } catch (e) {

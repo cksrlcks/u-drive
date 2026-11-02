@@ -10,6 +10,8 @@ import { isTauri, modKey } from "./platform";
 export interface MenuActions {
   newFolder(): void;
   upload(): void;
+  /** 데스크톱 앱에서만 */
+  uploadFolder?(): void;
   /** 선택 항목이 있을 때만 활성 */
   selection: { count: number; hasFile: boolean };
   /** 읽기 전용 저장소: 새 폴더·업로드·이름 변경·삭제를 끈다 */
@@ -63,6 +65,11 @@ export function MenuBar(a: MenuActions) {
             <MenubarItem disabled={a.readOnly} onClick={a.upload} className={item}>
               파일 업로드…
             </MenubarItem>
+            {a.uploadFolder && (
+              <MenubarItem disabled={a.readOnly} onClick={a.uploadFolder} className={item}>
+                폴더 업로드…
+              </MenubarItem>
+            )}
             <MenubarItem onClick={a.trash} className={item}>
               휴지통…
             </MenubarItem>

@@ -1,4 +1,4 @@
-import { IconFolderPlus, IconRefresh, IconUpload } from "@tabler/icons-react";
+import { IconFolderPlus, IconFolderUp, IconRefresh, IconUpload } from "@tabler/icons-react";
 import type { ReactElement, ReactNode } from "react";
 import {
   ContextMenu,
@@ -19,6 +19,8 @@ import type { Sort, SortKey, ViewMode } from "./FileList";
 export interface BackgroundMenuActions {
   newFolder(): void;
   upload(): void;
+  /** 데스크톱 앱에서만 */
+  uploadFolder?(): void;
   selectAll(): void;
   refresh(): void;
   view: ViewMode;
@@ -56,6 +58,11 @@ export function BackgroundContextMenu({ actions: a, trigger, children, disabled,
         <ContextMenuItem disabled={a.readOnly} onClick={a.upload} className="text-sm">
           <IconUpload className="size-4" /> 파일 업로드…
         </ContextMenuItem>
+        {a.uploadFolder && (
+          <ContextMenuItem disabled={a.readOnly} onClick={a.uploadFolder} className="text-sm">
+            <IconFolderUp className="size-4" /> 폴더 업로드…
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuSub>
           <ContextMenuSubTrigger inset className="text-sm">보기</ContextMenuSubTrigger>
