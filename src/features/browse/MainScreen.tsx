@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -339,6 +340,7 @@ export function MainScreen() {
         menu={{
           newFolder: () => setCreatingFolder(true),
           upload: () => dropRef.current?.open(),
+          uploadFolder: isTauri() ? () => dropRef.current?.openFolder() : undefined,
           selection: { count: selectedEntries.length, hasFile: selectedEntries.some((e) => e.type === "file") },
           readOnly,
           download: () => ops.download.mutate(selectedEntries),
@@ -425,6 +427,7 @@ export function MainScreen() {
               actions={{
                 newFolder: () => setCreatingFolder(true),
                 upload: () => dropRef.current?.open(),
+                uploadFolder: isTauri() ? () => dropRef.current?.openFolder() : undefined,
                 selectAll: () => setSelected(new Set(entries.map((x) => x.path))),
                 refresh: () => void qc.invalidateQueries({ queryKey: ["dir"] }),
                 view,
@@ -449,12 +452,15 @@ export function MainScreen() {
                 <Empty text="왼쪽에서 저장소를 선택하세요" />
               ) : dir.isLoading ? (
                 <FileListSkeleton />
-              ) : entries.length === 0 && !creatingFolder ? (
-                <Empty text={readOnly ? "비어 있는 폴더입니다" : "비어 있는 폴더입니다. 파일을 끌어다 놓으세요"} />
-              ) : view === "grid" ? (
-                <IconGrid {...listProps} libId={loc.libId} iconSize={iconSize} />
               ) : (
-                <FileList {...listProps} />
+                <>
+                  {/* 빈 폴더라도 하위 폴더면 목록을 그려 상위 폴더(..) 줄을 남긴다 */}
+                  {(entries.length > 0 || creatingFolder || listProps.parentDir != null) &&
+                    (view === "grid" ? <IconGrid {...listProps} libId={loc.libId} iconSize={iconSize} /> : <FileList {...listProps} />)}
+                  {entries.length === 0 && !creatingFolder && (
+                    <Empty text={readOnly ? "비어 있는 폴더입니다" : "비어 있는 폴더입니다. 파일을 끌어다 놓으세요"} className={listProps.parentDir != null ? "h-auto py-16" : undefined} />
+                  )}
+                </>
               )}
               {marquee.rect && <div className="pointer-events-none absolute border border-primary/60 bg-primary/10" style={marquee.rect} />}
               {dragMove.drag && (
@@ -508,8 +514,8 @@ export function MainScreen() {
   );
 }
 
-function Empty({ text }: { text: string }) {
-  return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{text}</div>;
+function Empty({ text, className }: { text: string; className?: string }) {
+  return <div className={cn("flex h-full items-center justify-center text-sm text-muted-foreground", className)}>{text}</div>;
 }
 
 function ErrorBanner({ message, onRetry, actionLabel = "다시 시도" }: { message: string; onRetry(): void; actionLabel?: string }) {
