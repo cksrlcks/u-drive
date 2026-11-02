@@ -1,6 +1,6 @@
 # U-Drive
 
-[Seafile](https://www.seafile.com/) 서버에 붙는 데스크톱 파일 관리 앱입니다. Windows·macOS용으로, 웹 화면 대신 탐색기·Finder처럼 파일을 올리고 받고 정리할 수 있습니다.
+[Seafile](https://www.seafile.com/) 서버에 붙는 데스크톱 파일 관리 앱입니다. Windows·macOS·Ubuntu용으로, 웹 화면 대신 탐색기·Finder처럼 파일을 올리고 받고 정리할 수 있습니다.
 
 Tauri 2 + React 19 + TypeScript(Vite)로 만들었습니다.
 
@@ -12,10 +12,11 @@ Tauri 2 + React 19 + TypeScript(Vite)로 만들었습니다.
 | --- | --- |
 | Windows | `Drive_<버전>_x64-setup.exe` |
 | macOS (Apple Silicon·Intel) | `Drive_<버전>_universal.dmg` |
+| Ubuntu 22.04+ (x64) | `Drive_<버전>_amd64.deb` 또는 `Drive_<버전>_amd64.AppImage` |
 
 macOS는 ad-hoc 서명이라 처음 한 번 **시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기**가 필요합니다. 자세한 내용은 [docs/macos-release.md](docs/macos-release.md).
 
-설치한 뒤에는 앱이 새 버전을 스스로 확인하고 업데이트합니다.
+설치한 뒤에는 앱이 새 버전을 스스로 확인하고 업데이트합니다. Ubuntu deb는 업데이트할 때 관리자 암호를 한 번 묻습니다.
 
 ## Claude 연결
 
@@ -91,6 +92,6 @@ docs/               디자인 규칙(DESIGN.md), 배포·CORS 안내
 1. `package.json`의 `version`을 올립니다 (앱 버전은 여기서 읽습니다).
 2. [CHANGELOG.md](CHANGELOG.md) 위쪽에 `## v<버전>` 섹션을 씁니다. 첫 줄은 한 문장 요약(앱 업데이트 알림에 나옴)이고, 섹션 전체가 릴리스 본문이 됩니다. 섹션이 없으면 빌드가 실패합니다.
 3. main에 커밋·푸시하고 `gh workflow run release.yml --ref main`으로 릴리스를 시작합니다. `v<버전>` 태그는 워크플로가 만듭니다(태그를 직접 푸시하지 않습니다).
-4. [release.yml](.github/workflows/release.yml)이 Windows·macOS를 빌드·서명해 초안 릴리스에 올리고, 둘 다 끝나면 공개합니다. 설치된 앱은 `latest.json`을 보고 업데이트합니다.
+4. [release.yml](.github/workflows/release.yml)이 Windows·macOS·Ubuntu를 빌드·서명해 초안 릴리스에 올리고, 모두 끝나면 공개합니다. 설치된 앱은 `latest.json`을 보고 업데이트합니다.
 
 필요한 GitHub 시크릿: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. macOS 정식 서명·공증용 시크릿은 [docs/macos-release.md](docs/macos-release.md)를 보세요.

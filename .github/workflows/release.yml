@@ -1,4 +1,4 @@
-# main에서 수동 실행(gh workflow run release.yml --ref main)하면 Windows·macOS 설치 파일을 빌드·서명해 GitHub Release로 올린다.
+# main에서 수동 실행(gh workflow run release.yml --ref main)하면 Windows·macOS·Ubuntu 설치 파일을 빌드·서명해 GitHub Release로 올린다.
 # 태그(v<버전>)는 tauri-action이 실행한 커밋에 만든다.
 # 태그 푸시로 돌리지 않는 이유: Actions 캐시는 ref별이라 태그 실행은 이전 태그의 Rust 캐시를 못 읽는다. main에서 돌려야 캐시가 쌓인다.
 # 각 플랫폼이 같은 초안(draft) 릴리스에 올리고 latest.json을 합친 뒤, 모두 끝나면 publish 잡이 공개한다.
@@ -24,6 +24,9 @@ jobs:
             args: ""
           - platform: macos-latest
             args: "--target universal-apple-darwin"
+          # 22.04로 빌드해야 더 오래된 glibc에서도 돈다(22.04 이상 Ubuntu에서 실행)
+          - platform: ubuntu-22.04
+            args: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +40,12 @@ jobs:
         with:
           # universal 빌드는 두 아키텍처가 모두 필요하다
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Linux 빌드 의존성
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -89,7 +98,7 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-  # 두 플랫폼이 모두 올라간 뒤에 공개해야 latest/download/latest.json에 양쪽이 다 들어 있다
+  # 모든 플랫폼이 올라간 뒤에 공개해야 latest/download/latest.json에 모든 플랫폼이 들어 있다
   publish:
     needs: build
     runs-on: ubuntu-latest

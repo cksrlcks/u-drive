@@ -1,8 +1,9 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { isTauri } from "@/features/shell/platform";
+import { isLinux, isTauri } from "@/features/shell/platform";
 import type { Entry } from "@/storage/StorageProvider";
 
-const supported = isTauri();
+// Linux는 셸 아이콘이 없다(file_icon이 항상 실패) → 기존 SVG 아이콘
+const supported = isTauri() && !isLinux();
 
 // 화면 배율과 상관없이 고정 크기로 받아 CSS로 줄인다. 배율이 키에 들어가면 확대·축소·모니터 이동 때마다 새로 받느라 SVG가 깜빡였다.
 // 목록(16)은 2배 화면까지 선명하게 32, 그리드는 셸 이미지 리스트 상한인 48
