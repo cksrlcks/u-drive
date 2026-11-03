@@ -8,6 +8,8 @@ interface SessionApi {
   session: Session;
   login(conn: Connection, username: string, password: string, otp?: string, opts?: { persistent?: boolean }): Promise<void>;
   logout(): void;
+  /** 지금 로그인을 자동 로그인으로 바꾼다(토큰을 localStorage에 둔다) */
+  makePersistent(): void;
   onUnauthorized(): void;
 }
 
@@ -38,7 +40,9 @@ export function StorageRoot({ children }: { children: ReactNode }) {
     expire();
   }, [provider, expire]);
 
-  const api = useMemo<SessionApi>(() => ({ session, login, logout, onUnauthorized: expire }), [session, login, logout, expire]);
+  const makePersistent = useCallback(() => saveSession(session, { persistent: true }), [session]);
+
+  const api = useMemo<SessionApi>(() => ({ session, login, logout, makePersistent, onUnauthorized: expire }), [session, login, logout, makePersistent, expire]);
 
   return (
     <SessionCtx.Provider value={api}>

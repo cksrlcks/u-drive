@@ -36,6 +36,7 @@ import { DetailsPanel } from "./DetailsPanel";
 import { ICON_SIZES, IconGrid } from "./IconGrid";
 import { Sidebar } from "./Sidebar";
 import { useCurrentDir, useLibraries, type Location } from "./useCurrentDir";
+import { useAddSyncFolder } from "@/features/sync/useAddSyncFolder";
 import { useEntryActions, type MoveOp } from "./useEntryActions";
 import { useDragMove } from "./useDragMove";
 import { MoveNotice } from "./MoveNotice";
@@ -151,6 +152,7 @@ export function MainScreen() {
 
   // ---- 파일 조작 ----
   const ops = useEntryActions(loc);
+  const sync = useAddSyncFolder(loc, lib, entries);
   const renameLibrary = useMutation({
     mutationFn: ({ lib, newName }: { lib: Library; newName: string }) => storage.renameLibrary(lib.id, newName),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["libraries"] }),
@@ -341,6 +343,7 @@ export function MainScreen() {
           newFolder: () => setCreatingFolder(true),
           upload: () => dropRef.current?.open(),
           uploadFolder: isTauri() ? () => dropRef.current?.openFolder() : undefined,
+          addSyncFolder: isTauri() ? sync.start : undefined,
           selection: { count: selectedEntries.length, hasFile: selectedEntries.some((e) => e.type === "file") },
           readOnly,
           download: () => ops.download.mutate(selectedEntries),
@@ -428,6 +431,7 @@ export function MainScreen() {
                 newFolder: () => setCreatingFolder(true),
                 upload: () => dropRef.current?.open(),
                 uploadFolder: isTauri() ? () => dropRef.current?.openFolder() : undefined,
+                addSyncFolder: isTauri() ? sync.start : undefined,
                 selectAll: () => setSelected(new Set(entries.map((x) => x.path))),
                 refresh: () => void qc.invalidateQueries({ queryKey: ["dir"] }),
                 view,
@@ -500,6 +504,7 @@ export function MainScreen() {
       {loc.libId && <ShareDialog libId={loc.libId} entry={sharing} onClose={() => setSharing(null)} />}
       <SendDialog source={nearbySend} onClose={() => setNearbySend(null)} />
       <SettingsDialog open={settingsOpen} page={settingsPage} onClose={() => setSettingsOpen(false)} />
+      {sync.dialog}
       <OverwriteDialog count={pending?.conflicts.length ?? 0} onChoice={onOverwriteChoice} />
       <DeleteDialog
         entries={deleting}
