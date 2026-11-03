@@ -39,7 +39,7 @@ import { useCurrentDir, useLibraries, type Location } from "./useCurrentDir";
 import { useSyncGuard } from "@/features/sync/useSyncGuard";
 import { useAddSyncFolder } from "@/features/sync/useAddSyncFolder";
 import { isSyncProblem } from "@/features/sync/constants";
-import { accountKey, removeLink, useLinks } from "@/features/sync/links";
+import { accountKey, findLink, removeLink, useLinks } from "@/features/sync/links";
 import { deleteBaseline, unwatchFolder } from "@/features/sync/native";
 import { releaseHold, useAllLinkStates } from "@/features/sync/syncState";
 import type { SyncLink } from "@/features/sync/type";
@@ -95,7 +95,13 @@ export function MainScreen() {
 
   const dir = useCurrentDir(loc);
   const lib = libs.data?.find((l) => l.id === loc.libId);
-  const readOnly = !!lib?.readOnly;
+  // 동기화 폴더 표시: 지금 계정·저장소의 연결만
+  const accQ = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000, enabled: isTauri() });
+  const syncAccount = accQ.data?.email ? accountKey(session.connection.baseUrl, accQ.data.email) : "";
+  const allLinks = useLinks(syncAccount);
+  // 동기화 폴더 안은 PC가 기준이라 읽기만 한다(읽기 전용 저장소와 같은 규칙)
+  const syncReadOnly = !!loc.libId && !!findLink(allLinks, loc.libId, loc.path);
+  const readOnly = !!lib?.readOnly || syncReadOnly;
   const crumbs: Crumb[] = useMemo(() => {
     if (!lib) return [];
     const segs = splitPath(loc.path);
@@ -228,10 +234,6 @@ export function MainScreen() {
   // 파일 목록의 공유 표시와 상태바 "링크 N개"용. 공유 링크 페이지와 같은 쿼리 키라 캐시를 같이 쓴다
   const shareLinks = useQuery({ queryKey: ["share-links"], queryFn: () => storage.listShareLinks() });
   const sharedPaths = useMemo(() => new Set((shareLinks.data ?? []).filter((l) => l.libId === loc.libId).map((l) => l.path)), [shareLinks.data, loc.libId]);
-  // 동기화 폴더 표시: 지금 계정·저장소의 연결만
-  const accQ = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000, enabled: isTauri() });
-  const syncAccount = accQ.data?.email ? accountKey(session.connection.baseUrl, accQ.data.email) : "";
-  const allLinks = useLinks(syncAccount);
   const linkStates = useAllLinkStates();
   const syncLinks = useMemo(() => new Map(allLinks.filter((l) => l.libId === loc.libId).map((l) => [l.drivePath, l])), [allLinks, loc.libId]);
   const [unsyncing, setUnsyncing] = useState<SyncLink | null>(null);
@@ -527,7 +529,7 @@ export function MainScreen() {
 
       <StatusBar
         itemCount={page === "files" && dir.data ? dir.data.length : null}
-        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · 읽기 전용` : syncNote ? (page === "files" && dir.data ? `${dir.data.length}개 항목 · ${syncNote}` : syncNote) : undefined}
+        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · ${syncReadOnly ? "동기화 폴더 · 읽기 전용" : "읽기 전용"}` : syncNote ? (page === "files" && dir.data ? `${dir.data.length}개 항목 · ${syncNote}` : syncNote) : undefined}
         onNoteClick={page === "files" && !(readOnly && dir.data) && problem.length > 0 ? () => setLoc({ libId: problem[0].libId, path: problem[0].drivePath }) : undefined}
         selectedCount={selectedEntries.length}
         selectedBytes={selectedEntries.reduce((a, e) => a + e.size, 0)}

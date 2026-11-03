@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { isTauri } from "@/features/shell/platform";
 import { useUploadQueueInstance } from "@/features/upload/useUploadQueue";
@@ -20,6 +20,7 @@ function LinkEngine({ link }: { link: SyncLink }) {
   const storage = useStorage();
   const { onUnauthorized } = useSession();
   const queue = useUploadQueueInstance();
+  const qc = useQueryClient();
   const unauth = useRef(onUnauthorized);
   unauth.current = onUnauthorized;
   const { id, localRoot, paused, account } = link;
@@ -53,6 +54,8 @@ function LinkEngine({ link }: { link: SyncLink }) {
           { ...opts, signal: stop.signal },
         );
         if (!alive) return;
+        // 올린 파일은 업로드 큐가 갱신하지만, 동기화가 지우거나 만든 폴더는 여기서 다시 읽어야 보인다
+        void qc.invalidateQueries({ queryKey: ["dir", cur.libId] });
         if (r.status === "idle") {
           setLinkState(id, { status: "idle", pending: 0, lastSyncedAt: Date.now(), error: undefined, deleteCount: undefined });
           if (cur.fresh) updateLink(id, { fresh: false });
