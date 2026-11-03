@@ -6,7 +6,8 @@ const listeners = new Set<() => void>();
 
 function load(): SyncLink[] {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "[]") as SyncLink[];
+    const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? "[]");
+    return Array.isArray(v) ? (v as SyncLink[]) : []; // 깨진 저장값으로 앱이 죽지 않게
   } catch {
     return [];
   }

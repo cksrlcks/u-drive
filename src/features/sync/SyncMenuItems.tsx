@@ -1,5 +1,6 @@
 import { IconFolderSearch, IconPlayerPause, IconPlayerPlay, IconRefresh, IconUnlink } from "@tabler/icons-react";
 import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
+import { logError } from "@/lib/errorLog";
 import { updateLink } from "./links";
 import { releaseHold, requestRun } from "./syncState";
 import type { SyncLink } from "./type";
@@ -10,7 +11,7 @@ export function SyncMenuItems({ link, onUnsync }: { link: SyncLink; onUnsync?(li
   return (
     <>
       <ContextMenuSeparator />
-      <ContextMenuItem onClick={() => void import("@tauri-apps/plugin-opener").then((m) => m.revealItemInDir(localRoot))} className="text-sm">
+      <ContextMenuItem onClick={() => void import("@tauri-apps/plugin-opener").then((m) => m.revealItemInDir(localRoot)).catch((e) => logError("sync", e))}className="text-sm">
         <IconFolderSearch className="size-4" /> PC 폴더 열기
       </ContextMenuItem>
       <ContextMenuItem disabled={paused} onClick={() => requestRun(id)} className="text-sm">

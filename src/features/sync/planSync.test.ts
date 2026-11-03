@@ -18,6 +18,11 @@ describe("planSync", () => {
     expect(p.uploads).toEqual([]);
     expect(p.deferred).toBe(1);
   });
+  it("uploads files with a future mtime (clock ahead) instead of deferring forever", () => {
+    const p = planSync(scan([f("a", 1, 1000 + 3600), f("b", 1, 999)]), emptyBaseline(), opts);
+    expect(p.uploads.map((x) => x.rel)).toEqual(["a"]);
+    expect(p.deferred).toBe(1);
+  });
   it("removes baseline files missing locally", () => {
     expect(planSync(scan([f("a")]), base([f("a"), f("b")]), opts).removeFiles).toEqual(["b"]);
   });

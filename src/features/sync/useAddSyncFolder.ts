@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createElement, useRef, useState, type ReactNode } from "react";
 import { setPrefs, getPrefs } from "@/features/settings/appPrefs";
 import { AddSyncDialog, type AddSyncInfo } from "@/features/sync/AddSyncDialog";
-import { checkNewLink } from "@/features/sync/checkNewLink";
+import { checkNewLink, isWholeDrive } from "@/features/sync/checkNewLink";
 import { accountKey, addLink, getLinks } from "@/features/sync/links";
 import { scanFolder } from "@/features/sync/native";
 import { requestRun } from "@/features/sync/syncState";
@@ -31,12 +31,13 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
       const { open } = await import("@tauri-apps/plugin-dialog");
       const picked = await open({ title: "동기화할 PC 폴더", directory: true });
       if (!picked) return;
+      // 디스크 전체를 훑기 전에 거른다
+      const name = baseName(picked.replace(/[\\]/g, "/"));
+      if (!name || /^[a-z]:$/i.test(name) || isWholeDrive(picked)) return setState({ error: "드라이브 전체는 동기화할 수 없습니다. 폴더를 골라 주세요" });
       const scan = await scanFolder(picked);
       if (scan === "NOT_FOUND") return setState({ error: "폴더를 읽을 수 없습니다" });
       const acc = await qc.fetchQuery({ queryKey: ["account"], queryFn: () => storage.getAccount() });
       const account = accountKey(session.connection.baseUrl, acc.email);
-      const name = baseName(picked.replace(/[\\]/g, "/"));
-      if (!name || /^[a-z]:$/i.test(name)) return setState({ error: "드라이브 전체는 동기화할 수 없습니다. 폴더를 골라 주세요" });
       const quotaLeft = acc.quota === null ? null : acc.quota - acc.usage;
       const check = checkNewLink({
         links: getLinks(account),

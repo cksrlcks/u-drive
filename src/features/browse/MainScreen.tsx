@@ -20,7 +20,7 @@ import { UploadPanel } from "@/features/upload/UploadPanel";
 import { DownloadPanel } from "@/features/download/DownloadPanel";
 import { NearbyPanel } from "@/features/nearby/NearbyPanel";
 import { SendDialog, type SendSource } from "@/features/nearby/SendDialog";
-import { useUploadQueue } from "@/features/upload/useUploadQueue";
+import { useUploadQueueInstance } from "@/features/upload/useUploadQueue";
 import { useSession, useStorage } from "@/storage/StorageContext";
 import { useStoredState } from "@/lib/useStoredState";
 import { useMarquee } from "./useMarquee";
@@ -141,7 +141,7 @@ export function MainScreen() {
 
   // ---- 업로드 ----
   const dropRef = useRef<DropZoneHandle>(null);
-  const { queue } = useUploadQueue();
+  const queue = useUploadQueueInstance(); // 진행 알림마다 화면 전체를 다시 그리지 않게 구독하지 않는다
   const [pending, setPending] = useState<{ conflicts: UploadTask[]; fresh: UploadTask[] } | null>(null);
   const { guard, guardMove, dialog: guardDialog } = useSyncGuard(loc.libId);
   async function onFiles(tasks: UploadTask[]) {
@@ -376,6 +376,7 @@ export function MainScreen() {
           addSyncFolder: isTauri() ? sync.start : undefined,
           selection: { count: selectedEntries.length, hasFile: selectedEntries.some((e) => e.type === "file") },
           readOnly,
+          hasLibrary: loc.libId !== null,
           download: () => ops.download.mutate(selectedEntries),
           share: () => selectedEntries[0] && setSharing(selectedEntries[0]),
           rename: () => selectedEntries[0] && setRenamingPath(selectedEntries[0].path),
@@ -526,7 +527,7 @@ export function MainScreen() {
 
       <StatusBar
         itemCount={page === "files" && dir.data ? dir.data.length : null}
-        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · 읽기 전용` : syncNote || undefined}
+        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · 읽기 전용` : syncNote ? (page === "files" && dir.data ? `${dir.data.length}개 항목 · ${syncNote}` : syncNote) : undefined}
         onNoteClick={page === "files" && !(readOnly && dir.data) && problem.length > 0 ? () => setLoc({ libId: problem[0].libId, path: problem[0].drivePath }) : undefined}
         selectedCount={selectedEntries.length}
         selectedBytes={selectedEntries.reduce((a, e) => a + e.size, 0)}

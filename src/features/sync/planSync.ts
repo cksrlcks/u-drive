@@ -12,8 +12,11 @@ export function planSync(scan: Scan, base: Baseline, opts: { nowSec: number; fre
     const b = base.files[f.rel];
     return !b || b.size !== f.size || b.mtime !== f.mtime;
   });
-  // 방금 바뀐 파일은 쓰는 중일 수 있어 다음 차례로 미룬다
-  const uploads = changed.filter((f) => opts.nowSec - f.mtime >= SETTLE_SEC);
+  // 방금 바뀐 파일은 쓰는 중일 수 있어 다음 차례로 미룬다. 미래 시각(시계가 앞선 NAS·USB)은 영원히 미뤄지지 않게 바로 올린다
+  const uploads = changed.filter((f) => {
+    const age = opts.nowSec - f.mtime;
+    return age < 0 || age >= SETTLE_SEC;
+  });
   const baseDirs = new Set(base.dirs);
   const scanDirs = new Set(scan.dirs);
   const scanFiles = new Set(scan.files.map((f) => f.rel));

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { isTauri } from "@/features/shell/platform";
-import { useUploadQueue } from "@/features/upload/useUploadQueue";
+import { useUploadQueueInstance } from "@/features/upload/useUploadQueue";
 import { logError } from "@/lib/errorLog";
 import { useSession, useStorage } from "@/storage/StorageContext";
 import { StorageError } from "@/storage/StorageProvider";
@@ -19,7 +19,7 @@ const WATCH_RETRY_MS = 60_000;
 function LinkEngine({ link }: { link: SyncLink }) {
   const storage = useStorage();
   const { onUnauthorized } = useSession();
-  const { queue } = useUploadQueue();
+  const queue = useUploadQueueInstance();
   const unauth = useRef(onUnauthorized);
   unauth.current = onUnauthorized;
   const { id, localRoot, paused, account } = link;
@@ -30,6 +30,7 @@ function LinkEngine({ link }: { link: SyncLink }) {
       return;
     }
     let alive = true;
+    const stop = new AbortController(); // 정리될 때(일시정지·해제·로그아웃·폴더 변경) 도는 실행을 멈춘다
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let watching = false;
     const run = async (opts: { confirmedDeletes?: boolean }) => {
@@ -49,7 +50,7 @@ function LinkEngine({ link }: { link: SyncLink }) {
             nowSec: () => Math.floor(Date.now() / 1000),
             onPending: (pending) => alive && setLinkState(id, { pending }),
           },
-          opts,
+          { ...opts, signal: stop.signal },
         );
         if (!alive) return;
         if (r.status === "idle") {
@@ -85,15 +86,13 @@ function LinkEngine({ link }: { link: SyncLink }) {
     };
     const { auto, off: unRunner } = linkTriggers(id, trigger);
     const unlisten = onFolderChanged((changed) => changed === id && auto());
-    void tryWatch().then((ok) => {
-      if (!alive) return;
-      if (ok) auto();
-      else setLinkState(id, { status: "localMissing", pending: 0 });
-    });
+    // 감시를 못 걸어도 폴더가 있으면 계속 돈다(1시간 전체 비교·60초마다 감시 재시도). 없어졌는지는 실행의 훑기 결과로만 판단한다
+    void tryWatch().then(() => alive && auto());
     const full = setInterval(() => auto(), FULL_SCAN_MS);
     const retry = setInterval(() => !watching && void tryWatch().then((ok) => ok && alive && auto()), WATCH_RETRY_MS);
     return () => {
       alive = false;
+      stop.abort();
       clearTimeout(settleTimer);
       clearInterval(full);
       clearInterval(retry);

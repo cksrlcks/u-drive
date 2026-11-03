@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkNewLink } from "@/features/sync/checkNewLink";
+import { checkNewLink, isWholeDrive } from "@/features/sync/checkNewLink";
 import type { SyncLink } from "@/features/sync/type";
 
 const L = (p: Partial<SyncLink>): SyncLink => ({ id: "1", account: "a", libId: "lib", drivePath: "/기획안", localRoot: "D:\\기획안", paused: false, fresh: false, ...p });
@@ -25,4 +25,13 @@ describe("checkNewLink", () => {
   it("rejects insufficient quota", () => expect(checkNewLink({ ...ok, totalBytes: 101 })).toEqual(fail("드라이브 남은 용량이 부족합니다")));
   it("passes with no existing item", () => expect(checkNewLink(ok)).toEqual({ ok: true, existing: false }));
   it("passes onto an existing dir; unlimited quota", () => expect(checkNewLink({ ...ok, existing: { type: "dir" }, quotaLeft: null })).toEqual({ ok: true, existing: true }));
+});
+
+describe("isWholeDrive", () => {
+  it("drive roots and UNC share roots are whole drives", () => {
+    for (const p of ["C:\\", "C:", "d:/", "\\\\nas\\share", "\\\\nas\\share\\", "/"]) expect(isWholeDrive(p), p).toBe(true);
+  });
+  it("folders are not", () => {
+    for (const p of ["C:\\문서", "\\\\nas\\share\\기획", "/Users/a"]) expect(isWholeDrive(p), p).toBe(false);
+  });
 });

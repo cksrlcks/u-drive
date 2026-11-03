@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createScheduler, holdLink, isHeld, linkTriggers, releaseHold, requestRun } from "./syncState";
+import { createScheduler, holdLink, isHeld, linkTriggers, releaseHold, requestRun, setLinkState, subscribeLinkStates } from "./syncState";
 
 const tick = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -83,6 +83,20 @@ describe("releaseHold", () => {
     expect(isHeld("r")).toBe(false);
     auto();
     expect(calls).toHaveLength(1);
+    off();
+  });
+});
+
+describe("setLinkState", () => {
+  it("바뀐 게 없으면 알리지 않는다", () => {
+    let n = 0;
+    const off = subscribeLinkStates(() => n++);
+    setLinkState("s", { pending: 3 });
+    setLinkState("s", { pending: 3 });
+    setLinkState("s", { status: "idle" });
+    expect(n).toBe(1);
+    setLinkState("s", { pending: 2 });
+    expect(n).toBe(2);
     off();
   });
 });

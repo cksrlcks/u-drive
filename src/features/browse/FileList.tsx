@@ -2,7 +2,6 @@ import { IconArrowDown, IconArrowUp, IconFile, IconFileZip, IconFileMusic, IconC
 import { cn } from "cn";
 import type { ReactNode } from "react";
 import { SyncBadge } from "@/features/sync/SyncBadge";
-import { useAllLinkStates } from "@/features/sync/syncState";
 import type { SyncLink } from "@/features/sync/type";
 import { formatDateLong, formatSize } from "@/lib/format";
 import type { Entry } from "@/storage/StorageProvider";
@@ -103,7 +102,6 @@ export interface ListProps {
 
 /** 표 보기: 24px 머리글, 28px 행, 줄무늬, 전체 행 선택 */
 export function FileList(p: ListProps) {
-  const states = useAllLinkStates();
   const { widths, startResize } = useColumnWidths<ColKey>("seadrive.columns", { mtime: 176, size: 96 }, { mtime: 90, size: 64 });
   return (
     <table className="w-full table-fixed border-collapse text-sm">
@@ -175,7 +173,7 @@ export function FileList(p: ListProps) {
                 <span data-drag className={cn("flex items-center gap-2", p.renamingPath !== e.path && "w-fit max-w-full")}>
                   <span className="relative flex">
                     <EntryIcon entry={e} />
-                    {p.syncLinks?.get(e.path) && <SyncBadge status={states[p.syncLinks.get(e.path)!.id]?.status ?? "idle"} className="-right-1 -bottom-1 size-3" />}
+                    {p.syncLinks?.get(e.path) && <SyncBadge linkId={p.syncLinks.get(e.path)!.id} className="-right-1 -bottom-1 size-3" />}
                   </span>
                   {p.renamingPath === e.path ? (
                     <InlineName initial={e.name} existing={p.existingNames.filter((n) => n !== e.name)} onSubmit={(n) => p.onRenameSubmit(e, n)} onCancel={p.onRenameCancel} className="h-6 max-w-sm text-sm md:text-sm" />

@@ -38,7 +38,7 @@ beforeEach(() => {
       tree.delete(p);
     }),
   };
-  writeBase = vi.fn<RunDeps["writeBase"]>(async (_id: string, b: Baseline) => void (written = b));
+  writeBase = vi.fn<RunDeps["writeBase"]>(async (_id: string, b: Baseline) => void (written = structuredClone(b)));
   const items: UploadItem[] = [];
   deps = {
     storage,
@@ -58,6 +58,7 @@ beforeEach(() => {
     readBase: async () => null,
     writeBase,
     nowSec: () => NOW,
+    sleep: async () => {},
   };
 });
 
@@ -205,5 +206,59 @@ describe("runLink", () => {
     await runLink(link, { ...deps, scan: async () => scanOf(["a", "b"]), onPending: (n) => calls.push(n) });
     expect(calls[0]).toBe(2);
     expect(calls[calls.length - 1]).toBe(0);
+  });
+
+  it("uploads in batches of 200 and saves the baseline after each batch", async () => {
+    const names = Array.from({ length: 450 }, (_, i) => `f${i}`);
+    const pending: number[] = [];
+    const saves: Baseline[] = [];
+    writeBase.mockImplementation(async (_id, b) => void saves.push((written = structuredClone(b))));
+    await runLink(link, { ...deps, scan: async () => scanOf(names), onPending: (n) => pending.push(n) });
+    expect(added).toHaveLength(450);
+    expect(saves.length).toBeGreaterThanOrEqual(3);
+    expect(Object.keys(saves[0].files)).toEqual(names.slice(0, 200));
+    expect(Object.keys(written!.files)).toHaveLength(450);
+    expect(pending).toEqual([450, 250, 50, 0]);
+  });
+
+  it("aborted before removes: no remove and no baseline write", async () => {
+    const ctrl = new AbortController();
+    tree.set("/기획안/b", "file");
+    await runLink(link, { ...deps, scan: async () => scanOf(["a"]), readBase: async () => base(["a", "b"], ["d"]), sleep: async () => ctrl.abort() }, { signal: ctrl.signal });
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(writeBase).not.toHaveBeenCalled();
+  });
+
+  it("aborted during uploads: no further batch and no baseline write", async () => {
+    const ctrl = new AbortController();
+    outcome = () => (ctrl.abort(), "done");
+    await runLink(link, { ...deps, scan: async () => scanOf(Array.from({ length: 250 }, (_, i) => `f${i}`)) }, { signal: ctrl.signal });
+    expect(added).toHaveLength(200);
+    expect(writeBase).not.toHaveBeenCalled();
+  });
+
+  it("a file missing only briefly (save in progress) is not removed", async () => {
+    tree.set("/기획안/a", "file");
+    tree.set("/기획안/b", "file");
+    const scans = [scanOf([]), scanOf(["a"])];
+    const sleep = vi.fn(async () => {});
+    await runLink(link, { ...deps, scan: async () => scans.shift()!, readBase: async () => base(["a", "b"]), sleep });
+    expect(sleep).toHaveBeenCalledWith(3000);
+    expect(storage.remove.mock.calls.map((c) => c[1])).toEqual(["/기획안/b"]);
+    expect(written!.files).toHaveProperty("a");
+  });
+
+  it("folder gone on the second scan: localMissing, nothing removed", async () => {
+    tree.set("/기획안/b", "file");
+    const scans: (Scan | "NOT_FOUND")[] = [scanOf([]), "NOT_FOUND"];
+    const r = await runLink(link, { ...deps, scan: async () => scans.shift()!, readBase: async () => base(["b"]) });
+    expect(r).toEqual({ status: "localMissing" });
+    expect(storage.remove).not.toHaveBeenCalled();
+  });
+
+  it("no removes: no settle wait", async () => {
+    const sleep = vi.fn(async () => {});
+    await runLink(link, { ...deps, scan: async () => scanOf(["a"]), sleep });
+    expect(sleep).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,9 @@ function norm(p: string) {
 
 const contains = (a: string, b: string) => a === b || b.startsWith(a + "/");
 
+/** 드라이브 루트(C:\)·네트워크 공유 루트(\\server\share)·'/'는 폴더가 아니라 디스크 전체다 */
+export const isWholeDrive = (p: string) => /^([a-z]:)?[\\/]?$/i.test(p) || /^[\\/]{2}[^\\/]+[\\/][^\\/]+[\\/]?$/.test(p);
+
 export function checkNewLink(a: {
   links: SyncLink[];
   libId: string;

@@ -1,10 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { addLink, findLink, followMove, followMoveAll, getLinks, linkUnder, movesLinkIntoLink, removeLink } from "@/features/sync/links";
 import type { SyncLink } from "@/features/sync/type";
 
 const L = (p: Partial<SyncLink>): SyncLink => ({ id: "1", account: "a", libId: "lib", drivePath: "/기획안", localRoot: "D:\\기획안", paused: false, fresh: false, ...p });
 
 describe("links", () => {
+  it("corrupted storage (not an array) loads as no links", async () => {
+    vi.stubGlobal("localStorage", { getItem: () => '{"a":1}', setItem: () => {} });
+    vi.resetModules();
+    try {
+      const m = await import("@/features/sync/links");
+      expect(m.getLinks("a")).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("findLink matches root and descendants only", () => {
     expect(findLink([L({})], "lib", "/기획안")?.id).toBe("1");
     expect(findLink([L({})], "lib", "/기획안/하위")?.id).toBe("1");

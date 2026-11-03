@@ -6,18 +6,21 @@ type RunOpts = { confirmedDeletes?: boolean };
 const IDLE: LinkState = { status: "idle", pending: 0, lastSyncedAt: null };
 let states: Record<string, LinkState> = {};
 const listeners = new Set<() => void>();
-const subscribe = (l: () => void) => {
+export const subscribeLinkStates = (l: () => void) => {
   listeners.add(l);
   return () => void listeners.delete(l);
 };
 
 export function setLinkState(id: string, patch: Partial<LinkState>) {
-  states = { ...states, [id]: { ...(states[id] ?? IDLE), ...patch } };
+  const prev = states[id] ?? IDLE;
+  // 업로드 진행 알림마다 불려도 바뀐 게 없으면 화면을 다시 그리지 않는다
+  if (states[id] && (Object.keys(patch) as (keyof LinkState)[]).every((k) => prev[k] === patch[k])) return;
+  states = { ...states, [id]: { ...prev, ...patch } };
   listeners.forEach((l) => l());
 }
 
-export const useLinkState = (id: string): LinkState => useSyncExternalStore(subscribe, () => states[id] ?? IDLE);
-export const useAllLinkStates = (): Record<string, LinkState> => useSyncExternalStore(subscribe, () => states);
+export const useLinkState = (id: string): LinkState => useSyncExternalStore(subscribeLinkStates, () => states[id] ?? IDLE);
+export const useAllLinkStates = (): Record<string, LinkState> => useSyncExternalStore(subscribeLinkStates, () => states);
 
 const runners = new Map<string, (o?: RunOpts) => void>();
 /** [취소]한 연결: 사용자가 다시 시작할 때까지 자동 실행(감시·타이머·마운트)을 막는다 */

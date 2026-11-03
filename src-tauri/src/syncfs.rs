@@ -109,8 +109,9 @@ pub async fn sync_scan(root: String) -> Result<SyncScan, String> {
 }
 
 /// 1.5초 디바운스 후 sync-changed(payload: id). 같은 id는 교체. 감시 오류도 같은 이벤트로 알려 다시 훑게 한다
+/// async: 큰 폴더의 재귀 감시 등록이 메인 스레드(창)를 막지 않게
 #[tauri::command]
-pub fn sync_watch(app: AppHandle, state: State<Watchers>, id: String, root: String) -> Result<(), String> {
+pub async fn sync_watch(app: AppHandle, state: State<'_, Watchers>, id: String, root: String) -> Result<(), String> {
     let (emitter, eid) = (app.clone(), id.clone());
     let mut deb = new_debouncer(Duration::from_millis(1500), move |_res| {
         let _ = emitter.emit("sync-changed", &eid);
