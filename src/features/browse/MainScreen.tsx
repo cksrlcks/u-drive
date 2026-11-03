@@ -26,7 +26,7 @@ import { useStoredState } from "@/lib/useStoredState";
 import { useMarquee } from "./useMarquee";
 import { useSidebarWidth } from "./useSidebarWidth";
 import { prefetchShellIcons } from "./useShellIcon";
-import { baseName, parentPath, splitPath } from "@/storage/path";
+import { baseName, joinPath, parentPath, splitPath } from "@/storage/path";
 import type { Entry, Library, UploadTask } from "@/storage/StorageProvider";
 import type { EntryMenuActions } from "./ContextMenu";
 import { DeleteDialog } from "./DeleteDialog";
@@ -137,7 +137,7 @@ export function MainScreen() {
   const dropRef = useRef<DropZoneHandle>(null);
   const { queue } = useUploadQueue();
   const [pending, setPending] = useState<{ conflicts: UploadTask[]; fresh: UploadTask[] } | null>(null);
-  const { guard, dialog: guardDialog } = useSyncGuard(loc.libId);
+  const { guard, guardMove, dialog: guardDialog } = useSyncGuard(loc.libId);
   async function onFiles(tasks: UploadTask[]) {
     if (!loc.libId || !(await guard([loc.path], "inside"))) return;
     const plan = planUploads(tasks, dir.data ?? []);
@@ -166,10 +166,12 @@ export function MainScreen() {
   // ---- 끌어서 옮기기: 같은 저장소 안, 지금 폴더의 하위 폴더로만. 놓은 뒤 잠시 실행 취소를 띄운다 ----
   const [lastMove, setLastMove] = useState<MoveOp | null>(null);
   const closeMoveNotice = useCallback(() => setLastMove(null), []);
-  const undoMove = () => {
+  const undoMove = async () => {
     if (!lastMove) return;
-    ops.move.mutate({ ...lastMove, srcDir: lastMove.dstDir, dstDir: lastMove.srcDir });
-    setLastMove(null);
+    const op = { ...lastMove, srcDir: lastMove.dstDir, dstDir: lastMove.srcDir };
+    setLastMove(null); // 확인 창이 떠 있는 동안 또 눌려도 두 번 실행되지 않게 먼저 비운다
+    if (!(await guardMove(op.names.map((n) => joinPath(op.srcDir, n)), op.dstDir)) || !(await guard([op.srcDir, op.dstDir], "inside"))) return;
+    ops.move.mutate(op);
   };
   const dirName = (path: string) => (path === "/" ? (lib?.name ?? "/") : baseName(path));
   const dragMove = useDragMove(
@@ -177,7 +179,7 @@ export function MainScreen() {
     selected,
     setSelected,
     async (items, dstDir) => {
-      if (!(await guard([loc.path, dstDir], "inside"))) return;
+      if (!(await guardMove(items.map((x) => x.path), dstDir)) || !(await guard([loc.path, dstDir], "inside"))) return;
       const op = { libId: loc.libId!, srcDir: loc.path, names: items.map((x) => x.name), dstDir };
       ops.move.mutate(op, { onSuccess: () => setLastMove(op) });
       setSelected(new Set());
@@ -278,7 +280,7 @@ export function MainScreen() {
     else if (e.key === "F5") (e.preventDefault(), void qc.invalidateQueries({ queryKey: ["dir"] }));
     else if (mod && e.shiftKey && e.key.toLowerCase() === "n" && !readOnly) (e.preventDefault(), setCreatingFolder(true));
     else if (mod && e.key === ",") (e.preventDefault(), openSettings());
-    else if (mod && e.key.toLowerCase() === "z" && lastMove) (e.preventDefault(), undoMove());
+    else if (mod && e.key.toLowerCase() === "z" && lastMove) (e.preventDefault(), void undoMove());
   }
 
   // 아이콘 보기 Ctrl+휠: 크기 단계 조절(탐색기처럼). preventDefault가 필요해 passive가 아닌 리스너로 직접 단다

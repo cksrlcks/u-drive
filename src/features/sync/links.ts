@@ -55,3 +55,17 @@ export function followMove(links: SyncLink[], libId: string, oldPath: string, ne
 
 /** 저장소 전체 연결에 followMove 적용(같은 libId·경로면 계정이 달라도 같은 드라이브 폴더) */
 export const followMoveAll = (libId: string, oldPath: string, newPath: string) => save(followMove(current, libId, oldPath, newPath));
+
+/** p가 연결 폴더 자체이거나 그 조상('/' 포함)이면 그 연결 */
+export function linkUnder(links: SyncLink[], libId: string, p: string): SyncLink | undefined {
+  return links.find((l) => l.libId === libId && (p === "/" || within(l.drivePath, p)));
+}
+
+/** 연결 폴더(또는 그것을 품은 폴더)를 다른 연결 폴더 안으로 옮기려는가 — 연결 중첩은 막는다 */
+export function movesLinkIntoLink(links: SyncLink[], libId: string, srcPaths: string[], dstDir: string): boolean {
+  const dst = findLink(links, libId, dstDir);
+  return !!dst && srcPaths.some((p) => {
+    const l = linkUnder(links, libId, p);
+    return !!l && l.id !== dst.id;
+  });
+}
