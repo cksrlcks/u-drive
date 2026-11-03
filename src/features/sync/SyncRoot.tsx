@@ -10,7 +10,7 @@ import { accountKey, getLinks, updateLink, useLinks } from "./links";
 import { MassDeleteDialog } from "./MassDeleteDialog";
 import { onFolderChanged, readBaseline, scanFolder, unwatchFolder, watchFolder, writeBaseline } from "./native";
 import { runLink } from "./runLink";
-import { createScheduler, registerRunner, setLinkState } from "./syncState";
+import { createScheduler, linkTriggers, setLinkState } from "./syncState";
 import type { SyncLink } from "./type";
 
 const WATCH_RETRY_MS = 60_000;
@@ -55,10 +55,15 @@ function LinkEngine({ link }: { link: SyncLink }) {
         if (r.status === "idle") {
           setLinkState(id, { status: "idle", pending: 0, lastSyncedAt: Date.now(), error: undefined, deleteCount: undefined });
           if (cur.fresh) updateLink(id, { fresh: false });
-          if (r.deferred > 0) settleTimer = setTimeout(() => trigger(), SETTLE_SEC * 1000);
+          if (r.deferred > 0) settleTimer = setTimeout(() => auto(), SETTLE_SEC * 1000);
         } else if (r.status === "needsConfirm") {
           setLinkState(id, { status: "needsConfirm", pending: 0, deleteCount: r.deleteCount });
         } else {
+          if (r.status === "localMissing" && watching) {
+            // 죽은 감시자는 다시 안 울린다: 풀어 두면 60초 재시도가 다시 걸고 실행한다
+            watching = false;
+            void unwatchFolder(id);
+          }
           setLinkState(id, { status: r.status, pending: 0 });
         }
       } catch (e) {
@@ -67,25 +72,26 @@ function LinkEngine({ link }: { link: SyncLink }) {
         if (alive) setLinkState(id, { status: "error", pending: 0, error: e instanceof Error ? e.message : "동기화에 실패했습니다" });
       }
     };
-    const trigger = createScheduler(run);
+    const trigger = createScheduler(id, run);
     const tryWatch = async () => {
       try {
         await watchFolder(id, localRoot);
         watching = true;
         return true;
-      } catch {
+      } catch (e) {
+        logError("sync", e);
         return false;
       }
     };
-    const unRunner = registerRunner(id, trigger);
-    const unlisten = onFolderChanged((changed) => changed === id && trigger());
+    const { auto, off: unRunner } = linkTriggers(id, trigger);
+    const unlisten = onFolderChanged((changed) => changed === id && auto());
     void tryWatch().then((ok) => {
       if (!alive) return;
-      if (ok) trigger();
+      if (ok) auto();
       else setLinkState(id, { status: "localMissing", pending: 0 });
     });
-    const full = setInterval(() => trigger(), FULL_SCAN_MS);
-    const retry = setInterval(() => !watching && void tryWatch().then((ok) => ok && alive && trigger()), WATCH_RETRY_MS);
+    const full = setInterval(() => auto(), FULL_SCAN_MS);
+    const retry = setInterval(() => !watching && void tryWatch().then((ok) => ok && alive && auto()), WATCH_RETRY_MS);
     return () => {
       alive = false;
       clearTimeout(settleTimer);
@@ -93,7 +99,7 @@ function LinkEngine({ link }: { link: SyncLink }) {
       clearInterval(retry);
       unRunner();
       void unlisten.then((f) => f());
-      if (watching) void unwatchFolder(id);
+      void unwatchFolder(id); // 아직 시작 중인 감시도 새지 않게 항상 푼다
     };
   }, [id, localRoot, paused, account, storage, queue]);
 
