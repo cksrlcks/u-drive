@@ -26,6 +26,12 @@ const COMMANDS: &[&str] = &[
     "nearby_cancel",
     "nearby_cleanup",
     "nearby_open_settings",
+    "sync_scan",
+    "sync_watch",
+    "sync_unwatch",
+    "sync_state_read",
+    "sync_state_write",
+    "sync_state_delete",
 ];
 
 fn main() {

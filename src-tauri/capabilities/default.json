@@ -47,6 +47,12 @@
     "allow-nearby-answer",
     "allow-nearby-cancel",
     "allow-nearby-cleanup",
-    "allow-nearby-open-settings"
+    "allow-nearby-open-settings",
+    "allow-sync-scan",
+    "allow-sync-watch",
+    "allow-sync-unwatch",
+    "allow-sync-state-read",
+    "allow-sync-state-write",
+    "allow-sync-state-delete"
   ]
 }
