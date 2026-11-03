@@ -41,7 +41,7 @@ export async function runLink(link: SyncLink, deps: RunDeps, opts: { confirmedDe
   const dirs = new Set(base.dirs);
   const drive = (rel: string) => joinPath(link.drivePath, rel);
   try {
-    // 상위 폴더가 드라이브에서 지워졌으면 먼저 만든다(Seafile mkdir은 중간 폴더를 안 만든다)
+    // 상위 폴더가 드라이브에서 지워졌으면 먼저 만든다(mkdir은 중간 폴더를 안 만든다)
     const ensureDir = async (d: string): Promise<void> => {
       const parent = dirOf(d);
       const name = d.slice(parent ? parent.length + 1 : 0);
