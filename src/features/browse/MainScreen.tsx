@@ -36,6 +36,7 @@ import { DetailsPanel } from "./DetailsPanel";
 import { ICON_SIZES, IconGrid } from "./IconGrid";
 import { Sidebar } from "./Sidebar";
 import { useCurrentDir, useLibraries, type Location } from "./useCurrentDir";
+import { useSyncGuard } from "@/features/sync/useSyncGuard";
 import { useAddSyncFolder } from "@/features/sync/useAddSyncFolder";
 import { useEntryActions, type MoveOp } from "./useEntryActions";
 import { useDragMove } from "./useDragMove";
@@ -136,8 +137,9 @@ export function MainScreen() {
   const dropRef = useRef<DropZoneHandle>(null);
   const { queue } = useUploadQueue();
   const [pending, setPending] = useState<{ conflicts: UploadTask[]; fresh: UploadTask[] } | null>(null);
-  function onFiles(tasks: UploadTask[]) {
-    if (!loc.libId) return;
+  const { guard, dialog: guardDialog } = useSyncGuard(loc.libId);
+  async function onFiles(tasks: UploadTask[]) {
+    if (!loc.libId || !(await guard([loc.path], "inside"))) return;
     const plan = planUploads(tasks, dir.data ?? []);
     if (plan.conflicts.length === 0) queue.add(loc.libId, plan.fresh);
     else setPending(plan);
@@ -174,7 +176,8 @@ export function MainScreen() {
     entries,
     selected,
     setSelected,
-    (items, dstDir) => {
+    async (items, dstDir) => {
+      if (!(await guard([loc.path, dstDir], "inside"))) return;
       const op = { libId: loc.libId!, srcDir: loc.path, names: items.map((x) => x.name), dstDir };
       ops.move.mutate(op, { onSuccess: () => setLastMove(op) });
       setSelected(new Set());
@@ -184,6 +187,10 @@ export function MainScreen() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [deleting, setDeleting] = useState<Entry[]>([]);
+  // 동기화 폴더 경고를 먼저 거친 뒤 삭제 확인 창을 연다
+  const askDelete = async (list: Entry[]) => {
+    if (await guard(list.map((e) => e.path), "removeRoot")) setDeleting(list);
+  };
   const [sharing, setSharing] = useState<Entry | null>(null);
   const [nearbySend, setNearbySend] = useState<SendSource | null>(null);
   // 선택한 파일들(우클릭한 파일이 선택에 없으면 그 파일만). 폴더는 보내지 않는다
@@ -228,7 +235,7 @@ export function MainScreen() {
     onRename: readOnly ? undefined : (e) => setRenamingPath(e.path),
     onShare: (e) => setSharing(e),
     onNearby: isTauri() ? sendNearby : undefined,
-    onDelete: readOnly ? undefined : (e) => setDeleting(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
+    onDelete: readOnly ? undefined : (e) => void askDelete(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
   };
 
   // ---- 키보드 ----
@@ -263,7 +270,7 @@ export function MainScreen() {
     else if (e.key === "Enter" && focusPath) (e.preventDefault(), open(entries[idx]));
     else if (e.key === "Backspace" && loc.path !== "/") (e.preventDefault(), setLoc({ ...loc, path: parentPath(loc.path) }));
     else if (e.key === "F2" && focusPath && !readOnly) (e.preventDefault(), setRenamingPath(focusPath));
-    else if (e.key === "Delete" && selectedEntries.length && !readOnly) (e.preventDefault(), setDeleting(selectedEntries));
+    else if (e.key === "Delete" && selectedEntries.length && !readOnly) (e.preventDefault(), void askDelete(selectedEntries));
     else if (e.key === "Escape") setSelected(new Set());
     else if (mod && e.key.toLowerCase() === "a") (e.preventDefault(), setSelected(new Set(entries.map((x) => x.path))));
     else if (e.altKey && e.key === "ArrowLeft") (e.preventDefault(), go(-1));
@@ -305,14 +312,16 @@ export function MainScreen() {
     actions: menuActions,
     existingNames: (dir.data ?? []).map((e) => e.name),
     renamingPath,
-    onRenameSubmit: (entry: Entry, newName: string) => {
+    onRenameSubmit: async (entry: Entry, newName: string) => {
       setRenamingPath(null);
+      if (!(await guard([entry.path]))) return;
       ops.rename.mutate({ entry, newName });
     },
     onRenameCancel: () => setRenamingPath(null),
     creatingFolder,
-    onCreateFolder: (name: string) => {
+    onCreateFolder: async (name: string) => {
       setCreatingFolder(false);
+      if (!(await guard([loc.path], "inside"))) return;
       ops.mkdir.mutate(name);
     },
     onCreateFolderCancel: () => setCreatingFolder(false),
@@ -349,7 +358,7 @@ export function MainScreen() {
           download: () => ops.download.mutate(selectedEntries),
           share: () => selectedEntries[0] && setSharing(selectedEntries[0]),
           rename: () => selectedEntries[0] && setRenamingPath(selectedEntries[0].path),
-          remove: () => setDeleting(selectedEntries),
+          remove: () => void askDelete(selectedEntries),
           selectAll: () => setSelected(new Set(entries.map((x) => x.path))),
           clearSelection: () => setSelected(new Set()),
           view,
@@ -505,6 +514,7 @@ export function MainScreen() {
       <SendDialog source={nearbySend} onClose={() => setNearbySend(null)} />
       <SettingsDialog open={settingsOpen} page={settingsPage} onClose={() => setSettingsOpen(false)} />
       {sync.dialog}
+      {guardDialog}
       <OverwriteDialog count={pending?.conflicts.length ?? 0} onChoice={onOverwriteChoice} />
       <DeleteDialog
         entries={deleting}

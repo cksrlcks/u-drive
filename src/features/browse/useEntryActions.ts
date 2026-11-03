@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useStorage } from "@/storage/StorageContext";
 import { joinPath, parentPath } from "@/storage/path";
 import type { Entry } from "@/storage/StorageProvider";
+import { followMoveAll } from "@/features/sync/links";
 import { downloadEntries } from "@/features/download/useDownloads";
 import type { Location } from "./useCurrentDir";
 
@@ -27,7 +28,10 @@ export function useEntryActions(loc: Location) {
   });
   const rename = useMutation({
     mutationFn: ({ entry, newName }: { entry: Entry; newName: string }) => storage.rename(libId, entry.path, newName, entry.type),
-    onSuccess: (_d, { entry }) => refresh(parentPath(entry.path)),
+    onSuccess: (_d, { entry, newName }) => {
+      followMoveAll(libId, entry.path, joinPath(parentPath(entry.path), newName));
+      return refresh(parentPath(entry.path));
+    },
   });
   const remove = useMutation({
     mutationFn: (entry: Entry) => storage.remove(libId, entry.path, entry.type),
@@ -44,7 +48,8 @@ export function useEntryActions(loc: Location) {
       if (dup) throw new Error(`'${dup}' 이름이 대상 폴더에 이미 있습니다`);
       await storage.move(libId, srcDir, names, dstDir);
     },
-    onSuccess: (_d, { libId }) => {
+    onSuccess: (_d, { libId, srcDir, names, dstDir }) => {
+      for (const n of names) followMoveAll(libId, joinPath(srcDir, n), joinPath(dstDir, n));
       void qc.invalidateQueries({ queryKey: ["libraries"] });
       // 옮긴 폴더의 하위 목록 캐시까지 낡으므로 저장소 전체를 다시 읽는다
       return qc.invalidateQueries({ queryKey: ["dir", libId] });

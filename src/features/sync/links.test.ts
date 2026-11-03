@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLink, followMove } from "@/features/sync/links";
+import { addLink, findLink, followMove, followMoveAll, getLinks, removeLink } from "@/features/sync/links";
 import type { SyncLink } from "@/features/sync/type";
 
 const L = (p: Partial<SyncLink>): SyncLink => ({ id: "1", account: "a", libId: "lib", drivePath: "/기획안", localRoot: "D:\\기획안", paused: false, fresh: false, ...p });
@@ -15,5 +15,11 @@ describe("links", () => {
     expect(followMove([L({ drivePath: "/a/기획안" })], "lib", "/a", "/b/a")[0].drivePath).toBe("/b/a/기획안");
     expect(followMove([L({})], "lib", "/기획안", "/새이름")[0].drivePath).toBe("/새이름");
     expect(followMove([L({})], "lib", "/기획", "/x")[0].drivePath).toBe("/기획안");
+  });
+  it("followMoveAll updates stored links", () => {
+    addLink(L({ id: "x", drivePath: "/a/기획안" }));
+    followMoveAll("lib", "/a", "/b");
+    expect(getLinks("a").find((l) => l.id === "x")?.drivePath).toBe("/b/기획안");
+    removeLink("x");
   });
 });

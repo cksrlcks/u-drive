@@ -52,3 +52,6 @@ export function findLink(links: SyncLink[], libId: string, path: string): SyncLi
 export function followMove(links: SyncLink[], libId: string, oldPath: string, newPath: string): SyncLink[] {
   return links.map((l) => (l.libId === libId && within(l.drivePath, oldPath) ? { ...l, drivePath: newPath + l.drivePath.slice(oldPath.length) } : l));
 }
+
+/** 저장소 전체 연결에 followMove 적용(같은 libId·경로면 계정이 달라도 같은 드라이브 폴더) */
+export const followMoveAll = (libId: string, oldPath: string, newPath: string) => save(followMove(current, libId, oldPath, newPath));
