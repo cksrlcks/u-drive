@@ -4,6 +4,7 @@ import { LoginScreen } from "@/features/auth/LoginScreen";
 import { MainScreen } from "@/features/browse/MainScreen";
 import { McpBridge, McpToolProvider } from "@/features/mcp/McpBridge";
 import { NearbyRoot } from "@/features/nearby/NearbyRoot";
+import { SyncRoot } from "@/features/sync/SyncRoot";
 import { UploadQueueRoot } from "@/features/upload/useUploadQueue";
 import { StorageError } from "@/storage/StorageProvider";
 import { StorageRoot, useSession } from "@/storage/StorageContext";
@@ -32,6 +33,7 @@ function Gate() {
         <UploadQueueRoot>
           <McpToolProvider />
           <NearbyRoot />
+          <SyncRoot />
           <MainScreen />
         </UploadQueueRoot>
       ) : (
