@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createElement, useState, type ReactNode } from "react";
+import { createElement, useRef, useState, type ReactNode } from "react";
 import { setPrefs, getPrefs } from "@/features/settings/appPrefs";
 import { AddSyncDialog, type AddSyncInfo } from "@/features/sync/AddSyncDialog";
 import { checkNewLink } from "@/features/sync/checkNewLink";
@@ -12,7 +12,7 @@ import { baseName, joinPath } from "@/storage/path";
 import { isPersistent } from "@/storage/session";
 import type { Entry, Library } from "@/storage/StorageProvider";
 
-type State = { error: string } | { info: AddSyncInfo; localRoot: string; account: string };
+type State = { error: string } | { info: AddSyncInfo; localRoot: string; account: string; libId: string; dir: string };
 
 /** PC 폴더를 골라 현재 위치에 동기화 폴더로 연결한다. dialog는 항상 렌더 */
 export function useAddSyncFolder(loc: Location, lib: Library | undefined, entries: Entry[]): { start(): void; dialog: ReactNode } {
@@ -21,9 +21,12 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
   const qc = useQueryClient();
   const [state, setState] = useState<State | null>(null);
   const [busy, setBusy] = useState(false);
+  const picking = useRef(false);
+  const [openId, setOpenId] = useState(0); // 열 때마다 확인 창 상태(체크박스)를 새로 시작
 
   async function start() {
-    if (!lib || loc.libId === null) return;
+    if (!lib || loc.libId === null || picking.current) return;
+    picking.current = true;
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const picked = await open({ title: "동기화할 PC 폴더", directory: true });
@@ -33,6 +36,7 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
       const acc = await qc.fetchQuery({ queryKey: ["account"], queryFn: () => storage.getAccount() });
       const account = accountKey(session.connection.baseUrl, acc.email);
       const name = baseName(picked.replace(/[\\]/g, "/"));
+      if (!name || /^[a-z]:$/i.test(name)) return setState({ error: "드라이브 전체는 동기화할 수 없습니다. 폴더를 골라 주세요" });
       const quotaLeft = acc.quota === null ? null : acc.quota - acc.usage;
       const check = checkNewLink({
         links: getLinks(account),
@@ -46,11 +50,14 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
         quotaLeft,
       });
       if (!check.ok) return setState({ error: check.reason });
-      const autostart = await import("@tauri-apps/plugin-autostart").then((a) => a.isEnabled(), () => true);
+      const autostart = await import("@tauri-apps/plugin-autostart").then((a) => a.isEnabled()).catch(() => true);
       const autoLogin = isPersistent();
+      setOpenId((n) => n + 1);
       setState({
         localRoot: picked,
         account,
+        libId: loc.libId,
+        dir: loc.path,
         info: {
           name,
           totalBytes: scan.totalBytes,
@@ -64,39 +71,42 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
       });
     } catch (e) {
       setState({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      picking.current = false;
     }
   }
 
   async function confirm(keepOn: boolean) {
-    if (!state || "error" in state || loc.libId === null) return;
-    const { info, localRoot, account } = state;
-    const drivePath = joinPath(loc.path, info.name);
+    if (!state || "error" in state) return;
+    const { info, localRoot, account, libId, dir } = state;
+    const drivePath = joinPath(dir, info.name);
     setBusy(true);
     try {
-      if (!info.existing) await storage.mkdir(loc.libId, drivePath);
-      const id = crypto.randomUUID();
-      addLink({ id, account, libId: loc.libId, drivePath, localRoot, paused: false, fresh: info.existing });
-      if (keepOn) {
-        try {
-          await import("@tauri-apps/plugin-autostart").then((a) => a.enable());
-        } catch {
-          // 자동 실행을 못 켜도 동기화 자체는 계속한다
-        }
-        setPrefs({ closeToTray: true });
-        makePersistent();
-      }
-      requestRun(id); // SyncRoot가 먼저 실행했으면 아무 일도 안 한다
-      void qc.invalidateQueries({ queryKey: ["dir", loc.libId, loc.path] });
-      setState(null);
+      if (!info.existing) await storage.mkdir(libId, drivePath);
     } catch (e) {
-      setState({ error: e instanceof Error ? e.message : "폴더를 만들지 못했습니다" });
-    } finally {
       setBusy(false);
+      return setState({ error: e instanceof Error ? e.message : "폴더를 만들지 못했습니다" });
     }
+    const id = crypto.randomUUID();
+    addLink({ id, account, libId, drivePath, localRoot, paused: false, fresh: info.existing });
+    let failed: string | null = null;
+    if (keepOn) {
+      try {
+        await import("@tauri-apps/plugin-autostart").then((a) => a.enable());
+      } catch (e) {
+        failed = `자동 실행을 켜지 못했습니다 (${e instanceof Error ? e.message : String(e)})`;
+      }
+      setPrefs({ closeToTray: true });
+      makePersistent();
+    }
+    requestRun(id); // SyncRoot가 먼저 실행했으면 아무 일도 안 한다
+    void qc.invalidateQueries({ queryKey: ["dir", libId, dir] });
+    setBusy(false);
+    setState(failed ? { error: failed } : null);
   }
 
   return {
     start: () => void start(),
-    dialog: createElement(AddSyncDialog, { state: state && ("error" in state ? state : state.info), busy, onConfirm: confirm, onCancel: () => setState(null) }),
+    dialog: createElement(AddSyncDialog, { key: openId, state: state && ("error" in state ? state : state.info), busy, onConfirm: confirm, onCancel: () => setState(null) }),
   };
 }
