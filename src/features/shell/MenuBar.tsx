@@ -12,10 +12,14 @@ export interface MenuActions {
   upload(): void;
   /** 데스크톱 앱에서만 */
   uploadFolder?(): void;
+  /** 데스크톱 앱에서만 */
+  addSyncFolder?(): void;
   /** 선택 항목이 있을 때만 활성 */
   selection: { count: number; hasFile: boolean };
   /** 읽기 전용 저장소: 새 폴더·업로드·이름 변경·삭제를 끈다 */
   readOnly: boolean;
+  /** 저장소를 골랐는가(동기화 폴더 추가는 저장소 안에서만) */
+  hasLibrary: boolean;
   download(): void;
   share(): void;
   rename(): void;
@@ -68,6 +72,11 @@ export function MenuBar(a: MenuActions) {
             {a.uploadFolder && (
               <MenubarItem disabled={a.readOnly} onClick={a.uploadFolder} className={item}>
                 폴더 업로드…
+              </MenubarItem>
+            )}
+            {a.addSyncFolder && (
+              <MenubarItem disabled={a.readOnly || !a.hasLibrary} onClick={a.addSyncFolder} className={item}>
+                동기화 폴더 추가…
               </MenubarItem>
             )}
             <MenubarItem onClick={a.trash} className={item}>

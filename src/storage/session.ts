@@ -69,6 +69,11 @@ export function saveSession(s: Session, opts: { persistent?: boolean } = {}, sto
   else stores.session.setItem(KEY, JSON.stringify(s));
 }
 
+/** 토큰이 localStorage에 있나(자동 로그인) */
+export function isPersistent(stores: Stores = defaultStores()): boolean {
+  return !!parse(stores.local.getItem(KEY))?.token;
+}
+
 export function clearToken(stores: Stores = defaultStores()): void {
   const cur = loadSession(stores);
   stores.local.setItem(KEY, JSON.stringify({ connection: cur.connection, token: null }));

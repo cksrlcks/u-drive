@@ -69,6 +69,25 @@ describe("waitSettled", () => {
     ]);
   });
 
+  it("keeps the last seen state of an item that disappears after a later update", async () => {
+    const src = source([
+      { id: "1", status: "running" },
+      { id: "2", status: "running" },
+      { id: "3", status: "running" },
+    ]);
+    const p = waitSettled(src, ["1", "3"], settled);
+    src.emit([
+      { id: "1", status: "done" },
+      { id: "2", status: "running" },
+      { id: "3", status: "running" },
+    ]);
+    src.emit([{ id: "2", status: "running" }]);
+    await expect(p).resolves.toEqual([
+      { id: "1", status: "done" },
+      { id: "3", status: "running" },
+    ]);
+  });
+
   it("unsubscribes after resolving", async () => {
     const src = source([{ id: "1", status: "running" }]);
     const p = waitSettled(src, ["1"], settled);

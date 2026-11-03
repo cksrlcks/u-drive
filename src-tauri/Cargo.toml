@@ -33,6 +33,9 @@ gethostname = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 ring = "0.17"
+# 폴더 동기화: PC 폴더 변경 알림(ReadDirectoryChangesW/FSEvents/inotify)
+notify = "8.2.1"
+notify-debouncer-mini = "0.7.0"
 
 [target.'cfg(windows)'.dependencies]
 # 셸 아이콘(탐색기와 같은 파일/폴더 그림) 추출용

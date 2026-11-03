@@ -13,8 +13,10 @@ export function waitSettled<T extends { id: string; status: string }>(src: Sourc
     const gone = new Set<string>();
     let off: (() => void) | undefined;
     const check = (items: T[]) => {
+      // 진행 알림이 초당 수십 번 오므로 id마다 목록을 훑지 않고 한 번만 색인한다
+      const byId = new Map(items.map((i) => [i.id, i]));
       for (const id of ids) {
-        const it = items.find((i) => i.id === id);
+        const it = byId.get(id);
         if (it) last.set(id, it);
         else if (last.has(id)) gone.add(id);
       }

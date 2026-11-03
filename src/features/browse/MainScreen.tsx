@@ -20,13 +20,13 @@ import { UploadPanel } from "@/features/upload/UploadPanel";
 import { DownloadPanel } from "@/features/download/DownloadPanel";
 import { NearbyPanel } from "@/features/nearby/NearbyPanel";
 import { SendDialog, type SendSource } from "@/features/nearby/SendDialog";
-import { useUploadQueue } from "@/features/upload/useUploadQueue";
+import { useUploadQueueInstance } from "@/features/upload/useUploadQueue";
 import { useSession, useStorage } from "@/storage/StorageContext";
 import { useStoredState } from "@/lib/useStoredState";
 import { useMarquee } from "./useMarquee";
 import { useSidebarWidth } from "./useSidebarWidth";
 import { prefetchShellIcons } from "./useShellIcon";
-import { baseName, parentPath, splitPath } from "@/storage/path";
+import { baseName, joinPath, parentPath, splitPath } from "@/storage/path";
 import type { Entry, Library, UploadTask } from "@/storage/StorageProvider";
 import type { EntryMenuActions } from "./ContextMenu";
 import { DeleteDialog } from "./DeleteDialog";
@@ -36,12 +36,20 @@ import { DetailsPanel } from "./DetailsPanel";
 import { ICON_SIZES, IconGrid } from "./IconGrid";
 import { Sidebar } from "./Sidebar";
 import { useCurrentDir, useLibraries, type Location } from "./useCurrentDir";
+import { useSyncGuard } from "@/features/sync/useSyncGuard";
+import { useAddSyncFolder } from "@/features/sync/useAddSyncFolder";
+import { isSyncProblem } from "@/features/sync/constants";
+import { accountKey, findLink, removeLink, useLinks } from "@/features/sync/links";
+import { deleteBaseline, unwatchFolder } from "@/features/sync/native";
+import { releaseHold, useAllLinkStates } from "@/features/sync/syncState";
+import type { SyncLink } from "@/features/sync/type";
+import { UnsyncDialog } from "@/features/sync/UnsyncDialog";
 import { useEntryActions, type MoveOp } from "./useEntryActions";
 import { useDragMove } from "./useDragMove";
 import { MoveNotice } from "./MoveNotice";
 
 export function MainScreen() {
-  const { logout } = useSession();
+  const { logout, session } = useSession();
   const storage = useStorage();
   const qc = useQueryClient();
   const libs = useLibraries();
@@ -87,7 +95,13 @@ export function MainScreen() {
 
   const dir = useCurrentDir(loc);
   const lib = libs.data?.find((l) => l.id === loc.libId);
-  const readOnly = !!lib?.readOnly;
+  // 동기화 폴더 표시: 지금 계정·저장소의 연결만
+  const accQ = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000, enabled: isTauri() });
+  const syncAccount = accQ.data?.email ? accountKey(session.connection.baseUrl, accQ.data.email) : "";
+  const allLinks = useLinks(syncAccount);
+  // 동기화 폴더 안은 PC가 기준이라 읽기만 한다(읽기 전용 저장소와 같은 규칙)
+  const syncReadOnly = !!loc.libId && !!findLink(allLinks, loc.libId, loc.path);
+  const readOnly = !!lib?.readOnly || syncReadOnly;
   const crumbs: Crumb[] = useMemo(() => {
     if (!lib) return [];
     const segs = splitPath(loc.path);
@@ -133,10 +147,11 @@ export function MainScreen() {
 
   // ---- 업로드 ----
   const dropRef = useRef<DropZoneHandle>(null);
-  const { queue } = useUploadQueue();
+  const queue = useUploadQueueInstance(); // 진행 알림마다 화면 전체를 다시 그리지 않게 구독하지 않는다
   const [pending, setPending] = useState<{ conflicts: UploadTask[]; fresh: UploadTask[] } | null>(null);
-  function onFiles(tasks: UploadTask[]) {
-    if (!loc.libId) return;
+  const { guard, guardMove, dialog: guardDialog } = useSyncGuard(loc.libId);
+  async function onFiles(tasks: UploadTask[]) {
+    if (!loc.libId || !(await guard([loc.path], "inside"))) return;
     const plan = planUploads(tasks, dir.data ?? []);
     if (plan.conflicts.length === 0) queue.add(loc.libId, plan.fresh);
     else setPending(plan);
@@ -151,6 +166,7 @@ export function MainScreen() {
 
   // ---- 파일 조작 ----
   const ops = useEntryActions(loc);
+  const sync = useAddSyncFolder(loc, lib, entries);
   const renameLibrary = useMutation({
     mutationFn: ({ lib, newName }: { lib: Library; newName: string }) => storage.renameLibrary(lib.id, newName),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["libraries"] }),
@@ -162,17 +178,20 @@ export function MainScreen() {
   // ---- 끌어서 옮기기: 같은 저장소 안, 지금 폴더의 하위 폴더로만. 놓은 뒤 잠시 실행 취소를 띄운다 ----
   const [lastMove, setLastMove] = useState<MoveOp | null>(null);
   const closeMoveNotice = useCallback(() => setLastMove(null), []);
-  const undoMove = () => {
+  const undoMove = async () => {
     if (!lastMove) return;
-    ops.move.mutate({ ...lastMove, srcDir: lastMove.dstDir, dstDir: lastMove.srcDir });
-    setLastMove(null);
+    const op = { ...lastMove, srcDir: lastMove.dstDir, dstDir: lastMove.srcDir };
+    setLastMove(null); // 확인 창이 떠 있는 동안 또 눌려도 두 번 실행되지 않게 먼저 비운다
+    if (!(await guardMove(op.names.map((n) => joinPath(op.srcDir, n)), op.dstDir)) || !(await guard([op.srcDir, op.dstDir], "inside"))) return;
+    ops.move.mutate(op);
   };
   const dirName = (path: string) => (path === "/" ? (lib?.name ?? "/") : baseName(path));
   const dragMove = useDragMove(
     entries,
     selected,
     setSelected,
-    (items, dstDir) => {
+    async (items, dstDir) => {
+      if (!(await guardMove(items.map((x) => x.path), dstDir)) || !(await guard([loc.path, dstDir], "inside"))) return;
       const op = { libId: loc.libId!, srcDir: loc.path, names: items.map((x) => x.name), dstDir };
       ops.move.mutate(op, { onSuccess: () => setLastMove(op) });
       setSelected(new Set());
@@ -182,6 +201,10 @@ export function MainScreen() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [deleting, setDeleting] = useState<Entry[]>([]);
+  // 동기화 폴더 경고를 먼저 거친 뒤 삭제 확인 창을 연다
+  const askDelete = async (list: Entry[]) => {
+    if (await guard(list.map((e) => e.path), "removeRoot")) setDeleting(list);
+  };
   const [sharing, setSharing] = useState<Entry | null>(null);
   const [nearbySend, setNearbySend] = useState<SendSource | null>(null);
   // 선택한 파일들(우클릭한 파일이 선택에 없으면 그 파일만). 폴더는 보내지 않는다
@@ -211,6 +234,12 @@ export function MainScreen() {
   // 파일 목록의 공유 표시와 상태바 "링크 N개"용. 공유 링크 페이지와 같은 쿼리 키라 캐시를 같이 쓴다
   const shareLinks = useQuery({ queryKey: ["share-links"], queryFn: () => storage.listShareLinks() });
   const sharedPaths = useMemo(() => new Set((shareLinks.data ?? []).filter((l) => l.libId === loc.libId).map((l) => l.path)), [shareLinks.data, loc.libId]);
+  const linkStates = useAllLinkStates();
+  const syncLinks = useMemo(() => new Map(allLinks.filter((l) => l.libId === loc.libId).map((l) => [l.drivePath, l])), [allLinks, loc.libId]);
+  const [unsyncing, setUnsyncing] = useState<SyncLink | null>(null);
+  const syncing = allLinks.filter((l) => linkStates[l.id]?.status === "syncing");
+  const problem = allLinks.filter((l) => isSyncProblem(linkStates[l.id]?.status ?? "idle"));
+  const syncNote = [syncing.length > 0 && `동기화 중 ${syncing.reduce((a, l) => a + linkStates[l.id].pending, 0)}개`, problem.length > 0 && `동기화 오류 ${problem.length}건`].filter(Boolean).join(" · ");
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const previewable = entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
   const previewIndex = previewable.findIndex((e) => e.path === previewPath);
@@ -226,7 +255,9 @@ export function MainScreen() {
     onRename: readOnly ? undefined : (e) => setRenamingPath(e.path),
     onShare: (e) => setSharing(e),
     onNearby: isTauri() ? sendNearby : undefined,
-    onDelete: readOnly ? undefined : (e) => setDeleting(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
+    onDelete: readOnly ? undefined : (e) => void askDelete(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
+    syncMenu: isTauri() ? (e) => (syncLinks.get(e.path) ? { link: syncLinks.get(e.path)! } : undefined) : undefined,
+    onUnsync: setUnsyncing,
   };
 
   // ---- 키보드 ----
@@ -261,7 +292,7 @@ export function MainScreen() {
     else if (e.key === "Enter" && focusPath) (e.preventDefault(), open(entries[idx]));
     else if (e.key === "Backspace" && loc.path !== "/") (e.preventDefault(), setLoc({ ...loc, path: parentPath(loc.path) }));
     else if (e.key === "F2" && focusPath && !readOnly) (e.preventDefault(), setRenamingPath(focusPath));
-    else if (e.key === "Delete" && selectedEntries.length && !readOnly) (e.preventDefault(), setDeleting(selectedEntries));
+    else if (e.key === "Delete" && selectedEntries.length && !readOnly) (e.preventDefault(), void askDelete(selectedEntries));
     else if (e.key === "Escape") setSelected(new Set());
     else if (mod && e.key.toLowerCase() === "a") (e.preventDefault(), setSelected(new Set(entries.map((x) => x.path))));
     else if (e.altKey && e.key === "ArrowLeft") (e.preventDefault(), go(-1));
@@ -269,7 +300,7 @@ export function MainScreen() {
     else if (e.key === "F5") (e.preventDefault(), void qc.invalidateQueries({ queryKey: ["dir"] }));
     else if (mod && e.shiftKey && e.key.toLowerCase() === "n" && !readOnly) (e.preventDefault(), setCreatingFolder(true));
     else if (mod && e.key === ",") (e.preventDefault(), openSettings());
-    else if (mod && e.key.toLowerCase() === "z" && lastMove) (e.preventDefault(), undoMove());
+    else if (mod && e.key.toLowerCase() === "z" && lastMove) (e.preventDefault(), void undoMove());
   }
 
   // 아이콘 보기 Ctrl+휠: 크기 단계 조절(탐색기처럼). preventDefault가 필요해 passive가 아닌 리스너로 직접 단다
@@ -294,6 +325,7 @@ export function MainScreen() {
   const listProps = {
     entries,
     sharedPaths,
+    syncLinks,
     sort,
     onSort,
     selected,
@@ -303,14 +335,16 @@ export function MainScreen() {
     actions: menuActions,
     existingNames: (dir.data ?? []).map((e) => e.name),
     renamingPath,
-    onRenameSubmit: (entry: Entry, newName: string) => {
+    onRenameSubmit: async (entry: Entry, newName: string) => {
       setRenamingPath(null);
+      if (!(await guard([entry.path]))) return;
       ops.rename.mutate({ entry, newName });
     },
     onRenameCancel: () => setRenamingPath(null),
     creatingFolder,
-    onCreateFolder: (name: string) => {
+    onCreateFolder: async (name: string) => {
       setCreatingFolder(false);
+      if (!(await guard([loc.path], "inside"))) return;
       ops.mkdir.mutate(name);
     },
     onCreateFolderCancel: () => setCreatingFolder(false),
@@ -341,12 +375,14 @@ export function MainScreen() {
           newFolder: () => setCreatingFolder(true),
           upload: () => dropRef.current?.open(),
           uploadFolder: isTauri() ? () => dropRef.current?.openFolder() : undefined,
+          addSyncFolder: isTauri() ? sync.start : undefined,
           selection: { count: selectedEntries.length, hasFile: selectedEntries.some((e) => e.type === "file") },
           readOnly,
+          hasLibrary: loc.libId !== null,
           download: () => ops.download.mutate(selectedEntries),
           share: () => selectedEntries[0] && setSharing(selectedEntries[0]),
           rename: () => selectedEntries[0] && setRenamingPath(selectedEntries[0].path),
-          remove: () => setDeleting(selectedEntries),
+          remove: () => void askDelete(selectedEntries),
           selectAll: () => setSelected(new Set(entries.map((x) => x.path))),
           clearSelection: () => setSelected(new Set()),
           view,
@@ -428,6 +464,7 @@ export function MainScreen() {
                 newFolder: () => setCreatingFolder(true),
                 upload: () => dropRef.current?.open(),
                 uploadFolder: isTauri() ? () => dropRef.current?.openFolder() : undefined,
+                addSyncFolder: isTauri() ? sync.start : undefined,
                 selectAll: () => setSelected(new Set(entries.map((x) => x.path))),
                 refresh: () => void qc.invalidateQueries({ queryKey: ["dir"] }),
                 view,
@@ -474,7 +511,7 @@ export function MainScreen() {
           )}
         </main>
         {detailsOpen && page === "files" && (
-          <DetailsPanel libId={loc.libId} libName={lib?.name ?? ""} folderName={crumbs[crumbs.length - 1]?.label ?? ""} root={loc.path === "/"} entries={dir.data ?? []} selected={selectedEntries} sharedPaths={sharedPaths} />
+          <DetailsPanel libId={loc.libId} libName={lib?.name ?? ""} folderName={crumbs[crumbs.length - 1]?.label ?? ""} root={loc.path === "/"} entries={dir.data ?? []} selected={selectedEntries} sharedPaths={sharedPaths} syncLinks={syncLinks} />
         )}
         {loc.libId && page === "files" && (
           <PreviewModal libId={loc.libId} entries={previewable} index={previewIndex} onClose={closePreview} onNavigate={(i) => setPreviewPath(previewable[i]?.path ?? null)} onDownload={(e) => ops.download.mutate([e])} />
@@ -492,7 +529,8 @@ export function MainScreen() {
 
       <StatusBar
         itemCount={page === "files" && dir.data ? dir.data.length : null}
-        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · 읽기 전용` : undefined}
+        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · ${syncReadOnly ? "동기화 폴더 · 읽기 전용" : "읽기 전용"}` : syncNote ? (page === "files" && dir.data ? `${dir.data.length}개 항목 · ${syncNote}` : syncNote) : undefined}
+        onNoteClick={page === "files" && !(readOnly && dir.data) && problem.length > 0 ? () => setLoc({ libId: problem[0].libId, path: problem[0].drivePath }) : undefined}
         selectedCount={selectedEntries.length}
         selectedBytes={selectedEntries.reduce((a, e) => a + e.size, 0)}
       />
@@ -500,6 +538,22 @@ export function MainScreen() {
       {loc.libId && <ShareDialog libId={loc.libId} entry={sharing} onClose={() => setSharing(null)} />}
       <SendDialog source={nearbySend} onClose={() => setNearbySend(null)} />
       <SettingsDialog open={settingsOpen} page={settingsPage} onClose={() => setSettingsOpen(false)} />
+      {sync.dialog}
+      <UnsyncDialog
+        open={!!unsyncing}
+        onCancel={() => setUnsyncing(null)}
+        onConfirm={async () => {
+          const l = unsyncing;
+          setUnsyncing(null);
+          if (!l) return;
+          // 감시를 풀고 기준 기록을 지운 뒤 연결을 없앤다. 실패해도 연결은 없앤다
+          await unwatchFolder(l.id).catch(() => {});
+          await deleteBaseline(l.id).catch(() => {});
+          removeLink(l.id);
+          releaseHold(l.id);
+        }}
+      />
+      {guardDialog}
       <OverwriteDialog count={pending?.conflicts.length ?? 0} onChoice={onOverwriteChoice} />
       <DeleteDialog
         entries={deleting}

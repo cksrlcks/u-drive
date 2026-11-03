@@ -26,9 +26,15 @@ export function UploadQueueRoot({ children }: { children: ReactNode }) {
   return createElement(Ctx.Provider, { value: queue }, children);
 }
 
-export function useUploadQueue(): { queue: UploadQueue; items: UploadItem[] } {
+/** 큐만 쓴다: 진행 알림(초당 수십 번)에 다시 그리지 않는다 */
+export function useUploadQueueInstance(): UploadQueue {
   const queue = useContext(Ctx);
   if (!queue) throw new Error("useUploadQueue outside UploadQueueRoot");
+  return queue;
+}
+
+export function useUploadQueue(): { queue: UploadQueue; items: UploadItem[] } {
+  const queue = useUploadQueueInstance();
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
   return { queue, items };
 }

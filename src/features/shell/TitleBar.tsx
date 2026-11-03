@@ -1,4 +1,4 @@
-import { IconArrowUp, IconChevronLeft, IconChevronRight, IconFolderPlus, IconLayoutGrid, IconLayoutSidebarRight, IconList, IconRefresh, IconUpload } from "@tabler/icons-react";
+import { IconArrowUp, IconChevronLeft, IconChevronRight, IconFolderPlus, IconLayoutGrid, IconLayoutSidebarRight, IconList, IconRefresh, IconRefreshDot, IconUpload } from "@tabler/icons-react";
 import { cn } from "cn";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,11 @@ export function TitleBar({ menu: m, crumbs, onNavigate, onSearchPick, disabled }
         <IconBtn label="새 폴더" shortcut={`${modKey()}+Shift+N`} onClick={m.newFolder} disabled={disabled || m.readOnly}>
           <IconFolderPlus className="size-4" stroke={1.75} />
         </IconBtn>
+        {m.addSyncFolder && (
+          <IconBtn label="동기화 폴더 추가" onClick={m.addSyncFolder} disabled={disabled || m.readOnly}>
+            <IconRefreshDot className="size-4" stroke={1.75} />
+          </IconBtn>
+        )}
         <Button size="sm" onClick={m.upload} disabled={disabled || m.readOnly} className="mx-1 h-7 rounded-md px-2.5">
           <IconUpload className="size-3.5" stroke={2} /> 업로드
         </Button>

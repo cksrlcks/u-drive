@@ -1,5 +1,7 @@
 import { CloudMark } from "@/components/ui/cloud-mark";
 import { FolderGlyph } from "@/components/ui/folder-glyph";
+import { SyncDetails } from "@/features/sync/SyncDetails";
+import type { SyncLink } from "@/features/sync/type";
 import { formatDate, formatSize } from "@/lib/format";
 import { parentPath } from "@/storage/path";
 import type { Entry } from "@/storage/StorageProvider";
@@ -16,14 +18,15 @@ interface Props {
   entries: Entry[];
   selected: Entry[];
   sharedPaths?: Set<string>;
+  syncLinks?: Map<string, SyncLink>;
 }
 
 /** 탐색기 "세부 정보 창": 선택 하나면 미리보기+속성, 여럿이면 개수·합계, 없으면 현재 폴더 요약 */
-export function DetailsPanel({ libId, libName, folderName, root, entries, selected, sharedPaths }: Props) {
+export function DetailsPanel({ libId, libName, folderName, root, entries, selected, sharedPaths, syncLinks }: Props) {
   return (
     <aside className="flex w-70 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-sidebar p-4 text-sm">
       {selected.length === 1 ? (
-        <Single libId={libId} libName={libName} entry={selected[0]} shared={!!sharedPaths?.has(selected[0].path)} />
+        <Single libId={libId} libName={libName} entry={selected[0]} shared={!!sharedPaths?.has(selected[0].path)} sync={syncLinks?.get(selected[0].path)} />
       ) : selected.length > 1 ? (
         <Summary title={`${selected.length}개 항목 선택됨`} items={selected} />
       ) : (
@@ -33,7 +36,7 @@ export function DetailsPanel({ libId, libName, folderName, root, entries, select
   );
 }
 
-function Single({ libId, libName, entry, shared }: { libId: string | null; libName: string; entry: Entry; shared: boolean }) {
+function Single({ libId, libName, entry, shared, sync }: { libId: string | null; libName: string; entry: Entry; shared: boolean; sync?: SyncLink }) {
   const [ref, thumb] = useThumbnail(libId, entry, 256);
   const dir = entry.type === "dir";
   const ext = !dir && entry.name.includes(".") ? entry.name.split(".").pop()!.toUpperCase() : "";
@@ -55,6 +58,7 @@ function Single({ libId, libName, entry, shared }: { libId: string | null; libNa
         <Row label="위치">{parent === "/" ? libName : `${libName}${parent}`}</Row>
         <Row label="공유 링크">{shared ? "있음" : "없음"}</Row>
       </dl>
+      {sync && <SyncDetails link={sync} />}
     </>
   );
 }

@@ -1,6 +1,8 @@
 import { IconArrowDown, IconArrowUp, IconFile, IconFileZip, IconFileMusic, IconCode, IconLink, IconPhoto, IconFileSpreadsheet, IconFileText, IconMovie, IconFolder } from "@tabler/icons-react";
 import { cn } from "cn";
 import type { ReactNode } from "react";
+import { SyncBadge } from "@/features/sync/SyncBadge";
+import type { SyncLink } from "@/features/sync/type";
 import { formatDateLong, formatSize } from "@/lib/format";
 import type { Entry } from "@/storage/StorageProvider";
 import { EntryContextMenu, type EntryMenuActions } from "./ContextMenu";
@@ -75,6 +77,8 @@ export interface ListProps {
   entries: Entry[];
   /** 공유 링크가 있는 항목의 경로. 이름 옆(목록)·아이콘 모서리(그리드)에 표시 */
   sharedPaths?: Set<string>;
+  /** 동기화 폴더의 드라이브 경로 → 연결(지금 저장소만). 폴더 아이콘에 배지 */
+  syncLinks?: Map<string, SyncLink>;
   sort: Sort;
   onSort(key: SortKey): void;
   selected: Set<string>;
@@ -167,7 +171,10 @@ export function FileList(p: ListProps) {
               <td className="pl-3">
                 {/* 아이콘·이름 부분만 끌어 옮기기 손잡이(useDragMove). 나머지 빈 곳은 드래그 선택 */}
                 <span data-drag className={cn("flex items-center gap-2", p.renamingPath !== e.path && "w-fit max-w-full")}>
-                  <EntryIcon entry={e} />
+                  <span className="relative flex">
+                    <EntryIcon entry={e} />
+                    {p.syncLinks?.get(e.path) && <SyncBadge linkId={p.syncLinks.get(e.path)!.id} className="-right-1 -bottom-1 size-3" />}
+                  </span>
                   {p.renamingPath === e.path ? (
                     <InlineName initial={e.name} existing={p.existingNames.filter((n) => n !== e.name)} onSubmit={(n) => p.onRenameSubmit(e, n)} onCancel={p.onRenameCancel} className="h-6 max-w-sm text-sm md:text-sm" />
                   ) : (

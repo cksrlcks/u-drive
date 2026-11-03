@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearToken, connectionFor, InsecureServerError, loadSession, saveSession } from "./session";
+import { clearToken, connectionFor, InsecureServerError, isPersistent, loadSession, saveSession } from "./session";
 
 function memStorage(): Storage {
   const m = new Map<string, string>();
@@ -77,5 +77,14 @@ describe("session persistence modes", () => {
     savePrefs({ username: "me@x.com", autoLogin: false }, local);
     expect(loadPrefs(local)).toEqual({ username: "me@x.com", autoLogin: false });
     expect(loadPrefs(memStorage())).toEqual({ username: null, autoLogin: true });
+  });
+
+  it("isPersistent reflects where the token is stored", () => {
+    const stores = { local: memStorage(), session: memStorage() };
+    const s = { connection: { kind: "seafile" as const, baseUrl: "https://x.example" }, token: "t" };
+    saveSession(s, { persistent: false }, stores);
+    expect(isPersistent(stores)).toBe(false);
+    saveSession(s, { persistent: true }, stores);
+    expect(isPersistent(stores)).toBe(true);
   });
 });
