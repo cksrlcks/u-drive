@@ -49,7 +49,6 @@ export function AddSyncDialog({ state, busy, onConfirm, onCancel }: Props) {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>파일을 고칠 때마다 이전 버전이 남아 시간이 지나면 용량을 더 쓸 수 있습니다.</p>
               {info.existing && <p>같은 이름의 폴더가 이미 있습니다. 기존 폴더에 이어서 연결하면 PC 파일을 올리기만 하고, 드라이브의 파일은 지우지 않습니다.</p>}
               {info.network && <p>네트워크 폴더는 변경 알림이 오지 않을 수 있어 반영이 최대 1시간 늦을 수 있습니다.</p>}
               <p>
