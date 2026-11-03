@@ -7,7 +7,7 @@ import type { Baseline, Scan, SyncLink } from "./type";
 const NOW = 1_000_000;
 const link: SyncLink = { id: "L", account: "a", libId: "lib", drivePath: "/기획안", localRoot: "C:/x", paused: false, fresh: false };
 const f = (rel: string, mtime = NOW - 100) => ({ rel, path: `C:/x/${rel}`, size: 1, mtime });
-const scanOf = (rels: string[], dirs: string[] = []): Scan => ({ files: rels.map((r) => f(r)), dirs, totalBytes: 0 });
+const scanOf = (rels: string[], dirs: string[] = []): Scan => ({ files: rels.map((r) => f(r)), dirs, totalBytes: 0, unreadable: [] });
 const base = (rels: string[], dirs: string[] = []): Baseline => ({ files: Object.fromEntries(rels.map((r) => [r, { size: 1, mtime: NOW - 100 }])), dirs });
 
 let tree: Map<string, "file" | "dir">;
@@ -183,5 +183,27 @@ describe("runLink", () => {
     s.files[0].mtime = NOW - 1;
     expect(await runLink(link, { ...deps, scan: async () => s })).toEqual({ status: "idle", deferred: 1 });
     expect(added).toHaveLength(0);
+  });
+
+  it("mkdir recreates ancestors deleted on the drive, shallow first", async () => {
+    await runLink(link, { ...deps, scan: async () => scanOf([], ["a", "a/b"]), readBase: async () => base([], ["a"]) });
+    expect(storage.mkdir.mock.calls.map((c) => c[1])).toEqual(["/기획안/a", "/기획안/a/b"]);
+    expect([...written!.dirs].sort()).toEqual(["a", "a/b"]);
+  });
+
+  it("does not delete entries under an unreadable folder", async () => {
+    tree.set("/기획안/locked/a.docx", "file");
+    const r = await runLink(link, { ...deps, scan: async () => ({ ...scanOf([]), unreadable: ["locked"] }), readBase: async () => base(["locked/a.docx"], ["locked"]) });
+    expect(r).toEqual({ status: "idle", deferred: 0 });
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(written!.files).toHaveProperty(["locked/a.docx"]);
+    expect(written!.dirs).toEqual(["locked"]);
+  });
+
+  it("onPending counts uploads down to 0", async () => {
+    const calls: number[] = [];
+    await runLink(link, { ...deps, scan: async () => scanOf(["a", "b"]), onPending: (n) => calls.push(n) });
+    expect(calls[0]).toBe(2);
+    expect(calls[calls.length - 1]).toBe(0);
   });
 });

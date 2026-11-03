@@ -26,6 +26,8 @@ pub struct SyncScan {
     /// 루트를 뺀 모든 하위 폴더(빈 폴더 포함)
     dirs: Vec<String>,
     total_bytes: u64,
+    /// 못 읽은 폴더·항목의 상대 경로. 그 아래 파일은 "없어진 것"이 아니라 "모르는 것"이다
+    unreadable: Vec<String>,
 }
 
 /// 동기화에서 뺄 이름: 점으로 시작(.git·.DS_Store…), 오피스 잠금(~$), 임시(.tmp), 윈도우 메타
@@ -34,32 +36,54 @@ fn ignored(name: &str) -> bool {
     name.starts_with('.') || name.starts_with("~$") || l.ends_with(".tmp") || l == "thumbs.db" || l == "desktop.ini"
 }
 
-/// root 아래를 훑는다. 링크된 폴더는 따라가지 않고, 링크된 파일은 가리키는 파일을 쓴다. 못 읽는 하위 항목은 건너뛴다
+/// root 아래를 훑는다. 링크된 폴더는 따라가지 않고, 링크된 파일은 가리키는 파일을 쓴다. 못 읽는 하위 항목은 unreadable에 담는다
 fn scan(root: &Path) -> Result<SyncScan, String> {
-    fn walk(p: &Path, rel: &str, out: &mut SyncScan) {
-        for e in std::fs::read_dir(p).into_iter().flatten().flatten() {
+    fn walk(p: &Path, rel: &str, out: &mut SyncScan) -> bool {
+        let Ok(rd) = std::fs::read_dir(p) else {
+            out.unreadable.push(rel.to_string());
+            return false;
+        };
+        for e in rd {
+            let Ok(e) = e else {
+                // 항목 하나를 못 읽으면 어느 것인지 몰라 폴더 전체를 모르는 것으로 둔다
+                out.unreadable.push(rel.to_string());
+                continue;
+            };
             let name = e.file_name().to_string_lossy().into_owned();
             if ignored(&name) {
                 continue;
             }
             let path = e.path();
             let r = if rel.is_empty() { name } else { format!("{rel}/{name}") };
-            let Ok(lm) = std::fs::symlink_metadata(&path) else { continue };
+            let Ok(lm) = std::fs::symlink_metadata(&path) else {
+                out.unreadable.push(r);
+                continue;
+            };
             if lm.is_dir() {
                 out.dirs.push(r.clone());
                 walk(&path, &r, out);
-            } else if let Some(m) = std::fs::metadata(&path).ok().filter(|m| m.is_file()) {
-                let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs_f64()).unwrap_or_default();
-                out.total_bytes += m.len();
-                out.files.push(ScanFile { rel: r, path: path.to_string_lossy().into_owned(), size: m.len(), mtime });
+            } else {
+                match std::fs::metadata(&path) {
+                    Ok(m) if m.is_file() => {
+                        let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs_f64()).unwrap_or_default();
+                        out.total_bytes += m.len();
+                        out.files.push(ScanFile { rel: r, path: path.to_string_lossy().into_owned(), size: m.len(), mtime });
+                    }
+                    Ok(_) => {}
+                    Err(_) => out.unreadable.push(r),
+                }
             }
         }
+        true
     }
     if !std::fs::metadata(root).is_ok_and(|m| m.is_dir()) {
         return Err("NOT_FOUND".into());
     }
-    let mut out = SyncScan { files: vec![], dirs: vec![], total_bytes: 0 };
-    walk(root, "", &mut out);
+    let mut out = SyncScan { files: vec![], dirs: vec![], total_bytes: 0, unreadable: vec![] };
+    if !walk(root, "", &mut out) {
+        return Err("NOT_FOUND".into());
+    }
+    // 루트 항목 오류는 ""로 기록된다: 루트 전체가 모호하므로 못 읽음으로 취급(TS에서 전부 보호)
     Ok(out)
 }
 
@@ -169,6 +193,24 @@ mod tests {
         assert_eq!(files, ["a.docx", "sub/b.txt"]);
         assert_eq!(dirs, ["sub", "빈폴더"]);
         assert_eq!(s.total_bytes, 5);
+    }
+
+    // 이식 가능한 방법이 없어 유닉스에서만: 권한 없는 하위 폴더는 unreadable에 담긴다(root 사용자면 건너뜀)
+    #[cfg(unix)]
+    #[test]
+    fn scan_reports_unreadable_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = temp_dir("unreadable");
+        std::fs::create_dir_all(d.join("locked")).unwrap();
+        std::fs::write(d.join("locked/a.docx"), "x").unwrap();
+        std::fs::set_permissions(d.join("locked"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let s = scan(&d).unwrap();
+        std::fs::set_permissions(d.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        if std::fs::read_dir(d.join("locked")).is_ok() && s.unreadable.is_empty() {
+            return; // root라 권한이 안 먹는다
+        }
+        assert_eq!(s.unreadable, ["locked"]);
+        assert!(s.files.is_empty());
     }
 
     #[test]

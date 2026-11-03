@@ -18,8 +18,10 @@ export function planSync(scan: Scan, base: Baseline, opts: { nowSec: number; fre
   const scanDirs = new Set(scan.dirs);
   const scanFiles = new Set(scan.files.map((f) => f.rel));
   const mkdirs = scan.dirs.filter((d) => !baseDirs.has(d)).sort((a, b) => depth(a) - depth(b));
-  const removeFiles = opts.fresh ? [] : Object.keys(base.files).filter((r) => !scanFiles.has(r));
-  const removeDirs = opts.fresh ? [] : base.dirs.filter((d) => !scanDirs.has(d)).sort((a, b) => depth(b) - depth(a));
+  // 못 읽은 곳 아래는 "없어진 것"이 아니라 "모르는 것"이라 지우지 않는다("" = 루트 전체)
+  const unknown = (r: string) => scan.unreadable.some((u) => u === "" || r === u || r.startsWith(u + "/"));
+  const removeFiles = opts.fresh ? [] : Object.keys(base.files).filter((r) => !scanFiles.has(r) && !unknown(r));
+  const removeDirs = opts.fresh ? [] : base.dirs.filter((d) => !scanDirs.has(d) && !unknown(d)).sort((a, b) => depth(b) - depth(a));
   const baseCount = Object.keys(base.files).length;
   const massDelete =
     !opts.confirmedDeletes &&

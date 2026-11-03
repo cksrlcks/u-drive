@@ -1,3 +1,4 @@
+import { logError } from "@/lib/errorLog";
 import type { Baseline, Scan } from "./type";
 
 const call = async <T>(cmd: string, args: Record<string, unknown>) => (await import("@tauri-apps/api/core")).invoke<T>(cmd, args);
@@ -14,7 +15,16 @@ export async function scanFolder(root: string): Promise<Scan | "NOT_FOUND"> {
 
 export async function readBaseline(id: string): Promise<Baseline | null> {
   const json = await call<string | null>("sync_state_read", { id });
-  return json ? (JSON.parse(json) as Baseline) : null;
+  if (!json) return null;
+  // 깨진 상태는 빈 기준 상태로 되돌린다: 빈 기준 상태는 아무것도 지우지 않아 안전하다
+  try {
+    const b = JSON.parse(json) as Baseline;
+    if (b && typeof b.files === "object" && b.files !== null && !Array.isArray(b.files) && Array.isArray(b.dirs)) return b;
+    throw new Error("기준 상태 형식이 맞지 않습니다");
+  } catch (e) {
+    logError("sync", e);
+    return null;
+  }
 }
 
 export const writeBaseline = (id: string, b: Baseline) => call<void>("sync_state_write", { id, json: JSON.stringify(b) });

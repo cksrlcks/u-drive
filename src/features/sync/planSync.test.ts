@@ -4,7 +4,7 @@ import { emptyBaseline, planSync } from "./planSync";
 import type { Baseline, Scan, ScanFile } from "./type";
 
 const f = (rel: string, size = 1, mtime = 100): ScanFile => ({ rel, path: `C:/p/${rel}`, size, mtime });
-const scan = (files: ScanFile[], dirs: string[] = []): Scan => ({ files, dirs, totalBytes: 0 });
+const scan = (files: ScanFile[], dirs: string[] = []): Scan => ({ files, dirs, totalBytes: 0, unreadable: [] });
 const base = (files: ScanFile[], dirs: string[] = []): Baseline => ({ files: Object.fromEntries(files.map((x) => [x.rel, { size: x.size, mtime: x.mtime }])), dirs });
 const opts = { nowSec: 1000, fresh: false };
 
@@ -45,5 +45,16 @@ describe("planSync", () => {
   });
   it("confirmedDeletes bypasses mass delete", () => {
     expect(planSync(scan([]), base(ten), { ...opts, confirmedDeletes: true }).massDelete).toBe(false);
+  });
+  it("never removes anything at or under an unreadable path (segment-aware)", () => {
+    const b = base([f("locked/a.docx"), f("locked/x/b"), f("lockedX/c"), f("gone")], ["locked", "locked/x", "lockedX"]);
+    const p = planSync({ ...scan([]), unreadable: ["locked"] }, b, opts);
+    expect(p.removeFiles.sort()).toEqual(["gone", "lockedX/c"]);
+    expect(p.removeDirs).toEqual(["lockedX"]);
+  });
+  it("empty unreadable path protects everything", () => {
+    const p = planSync({ ...scan([]), unreadable: [""] }, base(ten), opts);
+    expect(p.removeFiles).toEqual([]);
+    expect(p.massDelete).toBe(false);
   });
 });

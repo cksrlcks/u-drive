@@ -1,5 +1,5 @@
 export type ScanFile = { rel: string; path: string; size: number; mtime: number }; // mtime: 유닉스 초
-export type Scan = { files: ScanFile[]; dirs: string[]; totalBytes: number };
+export type Scan = { files: ScanFile[]; dirs: string[]; totalBytes: number; unreadable: string[] };
 export type Baseline = { files: Record<string, { size: number; mtime: number }>; dirs: string[] };
 export type SyncLink = {
   id: string; // crypto.randomUUID()

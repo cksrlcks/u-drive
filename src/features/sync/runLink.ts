@@ -1,3 +1,4 @@
+import { logError } from "@/lib/errorLog";
 import { waitSettled } from "@/features/mcp/waitSettled";
 import type { UploadQueue } from "@/features/upload/uploadQueue";
 import { joinPath } from "@/storage/path";
@@ -35,17 +36,26 @@ export async function runLink(link: SyncLink, deps: RunDeps, opts: { confirmedDe
   const base = (await deps.readBase(link.id)) ?? emptyBaseline();
   const plan = planSync(scan, base, { nowSec: deps.nowSec(), fresh: link.fresh, confirmedDeletes: opts.confirmedDeletes });
   if (plan.massDelete) return { status: "needsConfirm", deleteCount: plan.removeFiles.length };
-  deps.onPending?.(plan.mkdirs.length + plan.uploads.length + plan.removeFiles.length + plan.removeDirs.length);
 
   const files = { ...base.files };
   const dirs = new Set(base.dirs);
   const drive = (rel: string) => joinPath(link.drivePath, rel);
   try {
-    for (const d of plan.mkdirs) {
+    // 상위 폴더가 드라이브에서 지워졌으면 먼저 만든다(Seafile mkdir은 중간 폴더를 안 만든다)
+    const ensureDir = async (d: string): Promise<void> => {
       const parent = dirOf(d);
       const name = d.slice(parent ? parent.length + 1 : 0);
-      const siblings = await storage.listDir(link.libId, parent ? drive(parent) : link.drivePath);
+      let siblings: Awaited<ReturnType<typeof storage.listDir>> = [];
+      try {
+        siblings = await storage.listDir(link.libId, parent ? drive(parent) : link.drivePath);
+      } catch (e) {
+        if (!parent || !isKind(e, "notFound")) throw e;
+        await ensureDir(parent);
+      }
       if (!siblings.some((s) => s.type === "dir" && s.name === name)) await storage.mkdir(link.libId, drive(d));
+    };
+    for (const d of plan.mkdirs) {
+      await ensureDir(d);
       dirs.add(d);
     }
 
@@ -56,7 +66,11 @@ export async function runLink(link: SyncLink, deps: RunDeps, opts: { confirmedDe
         return relativePath ? { file, targetDir: link.drivePath, relativePath } : { file, targetDir: link.drivePath };
       });
       const ids = uploads.add(link.libId, tasks);
-      const done = await waitSettled(uploads, ids, (s) => s === "done" || s === "failed" || s === "cancelled");
+      const isSettled = (s: string) => s === "done" || s === "failed" || s === "cancelled";
+      deps.onPending?.(ids.length);
+      const off = uploads.subscribe((items) => deps.onPending?.(ids.filter((id) => { const it = items.find((i) => i.id === id); return it && !isSettled(it.status); }).length));
+      const done = await waitSettled(uploads, ids, isSettled).finally(off);
+      deps.onPending?.(0);
       done.forEach((it, i) => {
         if (it.status !== "done") return;
         const f = plan.uploads[i];
@@ -73,6 +87,7 @@ export async function runLink(link: SyncLink, deps: RunDeps, opts: { confirmedDe
       } catch (e) {
         if (isKind(e, "notFound")) delete files[rel];
         else if (isKind(e, "unauthorized")) throw e;
+        else logError("sync", e);
       }
     }
 
@@ -84,6 +99,7 @@ export async function runLink(link: SyncLink, deps: RunDeps, opts: { confirmedDe
       } catch (e) {
         if (isKind(e, "notFound")) dirs.delete(d);
         else if (isKind(e, "unauthorized")) throw e;
+        else logError("sync", e);
       }
     }
   } finally {
