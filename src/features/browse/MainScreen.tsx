@@ -38,12 +38,18 @@ import { Sidebar } from "./Sidebar";
 import { useCurrentDir, useLibraries, type Location } from "./useCurrentDir";
 import { useSyncGuard } from "@/features/sync/useSyncGuard";
 import { useAddSyncFolder } from "@/features/sync/useAddSyncFolder";
+import { isSyncProblem } from "@/features/sync/constants";
+import { accountKey, removeLink, useLinks } from "@/features/sync/links";
+import { deleteBaseline, unwatchFolder } from "@/features/sync/native";
+import { releaseHold, useAllLinkStates } from "@/features/sync/syncState";
+import type { SyncLink } from "@/features/sync/type";
+import { UnsyncDialog } from "@/features/sync/UnsyncDialog";
 import { useEntryActions, type MoveOp } from "./useEntryActions";
 import { useDragMove } from "./useDragMove";
 import { MoveNotice } from "./MoveNotice";
 
 export function MainScreen() {
-  const { logout } = useSession();
+  const { logout, session } = useSession();
   const storage = useStorage();
   const qc = useQueryClient();
   const libs = useLibraries();
@@ -222,6 +228,16 @@ export function MainScreen() {
   // 파일 목록의 공유 표시와 상태바 "링크 N개"용. 공유 링크 페이지와 같은 쿼리 키라 캐시를 같이 쓴다
   const shareLinks = useQuery({ queryKey: ["share-links"], queryFn: () => storage.listShareLinks() });
   const sharedPaths = useMemo(() => new Set((shareLinks.data ?? []).filter((l) => l.libId === loc.libId).map((l) => l.path)), [shareLinks.data, loc.libId]);
+  // 동기화 폴더 표시: 지금 계정·저장소의 연결만
+  const accQ = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000, enabled: isTauri() });
+  const syncAccount = accQ.data?.email ? accountKey(session.connection.baseUrl, accQ.data.email) : "";
+  const allLinks = useLinks(syncAccount);
+  const linkStates = useAllLinkStates();
+  const syncLinks = useMemo(() => new Map(allLinks.filter((l) => l.libId === loc.libId).map((l) => [l.drivePath, l])), [allLinks, loc.libId]);
+  const [unsyncing, setUnsyncing] = useState<SyncLink | null>(null);
+  const syncing = allLinks.filter((l) => linkStates[l.id]?.status === "syncing");
+  const problem = allLinks.filter((l) => isSyncProblem(linkStates[l.id]?.status ?? "idle"));
+  const syncNote = [syncing.length > 0 && `동기화 중 ${syncing.reduce((a, l) => a + linkStates[l.id].pending, 0)}개`, problem.length > 0 && `동기화 오류 ${problem.length}건`].filter(Boolean).join(" · ");
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const previewable = entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
   const previewIndex = previewable.findIndex((e) => e.path === previewPath);
@@ -238,6 +254,8 @@ export function MainScreen() {
     onShare: (e) => setSharing(e),
     onNearby: isTauri() ? sendNearby : undefined,
     onDelete: readOnly ? undefined : (e) => void askDelete(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
+    syncMenu: isTauri() ? (e) => (syncLinks.get(e.path) ? { link: syncLinks.get(e.path)! } : undefined) : undefined,
+    onUnsync: setUnsyncing,
   };
 
   // ---- 키보드 ----
@@ -305,6 +323,7 @@ export function MainScreen() {
   const listProps = {
     entries,
     sharedPaths,
+    syncLinks,
     sort,
     onSort,
     selected,
@@ -489,7 +508,7 @@ export function MainScreen() {
           )}
         </main>
         {detailsOpen && page === "files" && (
-          <DetailsPanel libId={loc.libId} libName={lib?.name ?? ""} folderName={crumbs[crumbs.length - 1]?.label ?? ""} root={loc.path === "/"} entries={dir.data ?? []} selected={selectedEntries} sharedPaths={sharedPaths} />
+          <DetailsPanel libId={loc.libId} libName={lib?.name ?? ""} folderName={crumbs[crumbs.length - 1]?.label ?? ""} root={loc.path === "/"} entries={dir.data ?? []} selected={selectedEntries} sharedPaths={sharedPaths} syncLinks={syncLinks} />
         )}
         {loc.libId && page === "files" && (
           <PreviewModal libId={loc.libId} entries={previewable} index={previewIndex} onClose={closePreview} onNavigate={(i) => setPreviewPath(previewable[i]?.path ?? null)} onDownload={(e) => ops.download.mutate([e])} />
@@ -507,7 +526,8 @@ export function MainScreen() {
 
       <StatusBar
         itemCount={page === "files" && dir.data ? dir.data.length : null}
-        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · 읽기 전용` : undefined}
+        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · 읽기 전용` : syncNote || undefined}
+        onNoteClick={page === "files" && !(readOnly && dir.data) && problem.length > 0 ? () => setLoc({ libId: problem[0].libId, path: problem[0].drivePath }) : undefined}
         selectedCount={selectedEntries.length}
         selectedBytes={selectedEntries.reduce((a, e) => a + e.size, 0)}
       />
@@ -516,6 +536,20 @@ export function MainScreen() {
       <SendDialog source={nearbySend} onClose={() => setNearbySend(null)} />
       <SettingsDialog open={settingsOpen} page={settingsPage} onClose={() => setSettingsOpen(false)} />
       {sync.dialog}
+      <UnsyncDialog
+        open={!!unsyncing}
+        onCancel={() => setUnsyncing(null)}
+        onConfirm={async () => {
+          const l = unsyncing;
+          setUnsyncing(null);
+          if (!l) return;
+          // 감시를 풀고 기준 기록을 지운 뒤 연결을 없앤다. 실패해도 연결은 없앤다
+          await unwatchFolder(l.id).catch(() => {});
+          await deleteBaseline(l.id).catch(() => {});
+          removeLink(l.id);
+          releaseHold(l.id);
+        }}
+      />
       {guardDialog}
       <OverwriteDialog count={pending?.conflicts.length ?? 0} onChoice={onOverwriteChoice} />
       <DeleteDialog

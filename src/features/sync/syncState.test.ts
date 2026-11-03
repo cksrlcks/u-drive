@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createScheduler, holdLink, linkTriggers, requestRun } from "./syncState";
+import { createScheduler, holdLink, isHeld, linkTriggers, releaseHold, requestRun } from "./syncState";
 
 const tick = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -70,5 +70,19 @@ describe("보류", () => {
     off();
     requestRun("h");
     expect(calls).toHaveLength(3);
+  });
+});
+
+describe("releaseHold", () => {
+  it("보류를 풀어 자동 트리거가 다시 돈다", () => {
+    const calls: number[] = [];
+    const { auto, off } = linkTriggers("r", () => void calls.push(1));
+    holdLink("r");
+    expect(isHeld("r")).toBe(true);
+    releaseHold("r");
+    expect(isHeld("r")).toBe(false);
+    auto();
+    expect(calls).toHaveLength(1);
+    off();
   });
 });

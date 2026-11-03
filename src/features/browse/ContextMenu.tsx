@@ -1,6 +1,8 @@
 import { IconBuildingBroadcastTower, IconDownload, IconLink, IconPencil, IconTrash } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { ContextMenu as Root, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { SyncMenuItems } from "@/features/sync/SyncMenuItems";
+import type { SyncLink } from "@/features/sync/type";
 import type { Entry } from "@/storage/StorageProvider";
 
 export interface EntryMenuActions {
@@ -12,6 +14,9 @@ export interface EntryMenuActions {
   /** 바로 보내기. 설치된 앱에서만 */
   onNearby?(entry: Entry): void;
   onDelete?(entry: Entry): void;
+  /** 연결 폴더면 그 연결(관리 항목이 붙는다). 데스크톱에서만 */
+  syncMenu?(entry: Entry): { link: SyncLink } | undefined;
+  onUnsync?(link: SyncLink): void;
 }
 
 interface Props {
@@ -29,6 +34,7 @@ interface Props {
 
 export function EntryContextMenu({ entry, actions, children, asRow, className, onContextMenu, onClick, onDoubleClick, dataPath }: Props) {
   const handlers = { className, onContextMenu, onClick, onDoubleClick, "data-path": dataPath };
+  const sync = actions.syncMenu?.(entry);
   const trigger = asRow ? <tr {...handlers} /> : <div {...handlers} />;
   return (
     <Root>
@@ -60,6 +66,7 @@ export function EntryContextMenu({ entry, actions, children, asRow, className, o
           <IconTrash className="size-4" /> 삭제
           <ContextMenuShortcut>Del</ContextMenuShortcut>
         </ContextMenuItem>
+        {sync && <SyncMenuItems link={sync.link} onUnsync={actions.onUnsync} />}
       </ContextMenuContent>
     </Root>
   );

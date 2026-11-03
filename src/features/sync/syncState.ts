@@ -24,6 +24,8 @@ const runners = new Map<string, (o?: RunOpts) => void>();
 const held = new Set<string>();
 export const holdLink = (id: string) => void held.add(id);
 export const isHeld = (id: string) => held.has(id);
+/** 일시정지·해제 때 보류를 지워, 다시 시작하면 마운트 실행이 대량 삭제 확인을 다시 거치게 한다 */
+export const releaseHold = (id: string) => void held.delete(id);
 
 /** 자동 트리거는 보류 중이면 건너뛰고, 수동(requestRun)은 보류를 풀고 돈다. 수동 쪽만 requestRun에 등록한다 */
 export function linkTriggers(id: string, trigger: (o?: RunOpts) => void) {
