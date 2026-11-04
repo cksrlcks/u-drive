@@ -21,6 +21,7 @@ import { DownloadPanel } from "@/features/download/DownloadPanel";
 import { NearbyPanel } from "@/features/nearby/NearbyPanel";
 import { SendDialog, type SendSource } from "@/features/nearby/SendDialog";
 import { useUploadQueueInstance } from "@/features/upload/useUploadQueue";
+import { NAS_PREFIX } from "@/storage/nas/withNas";
 import { useSession, useStorage } from "@/storage/StorageContext";
 import { useStoredState } from "@/lib/useStoredState";
 import { useMarquee } from "./useMarquee";
@@ -101,7 +102,9 @@ export function MainScreen() {
   const allLinks = useLinks(syncAccount);
   // 동기화 폴더 안은 PC가 기준이라 읽기만 한다(읽기 전용 저장소와 같은 규칙)
   const syncReadOnly = !!loc.libId && !!findLink(allLinks, loc.libId, loc.path);
-  const readOnly = !!lib?.readOnly || syncReadOnly;
+  // 다시 읽는 사이 목록에서 잠깐 빠져도 디자인나스면 올리기·미리보기·공유를 열지 않게 id로도 본다
+  const isNas = !!loc.libId?.startsWith(NAS_PREFIX) || !!lib?.nas;
+  const readOnly = isNas || !!lib?.readOnly || syncReadOnly;
   const crumbs: Crumb[] = useMemo(() => {
     if (!lib) return [];
     const segs = splitPath(loc.path);
@@ -241,20 +244,20 @@ export function MainScreen() {
   const problem = allLinks.filter((l) => isSyncProblem(linkStates[l.id]?.status ?? "idle"));
   const syncNote = [syncing.length > 0 && `동기화 중 ${syncing.reduce((a, l) => a + linkStates[l.id].pending, 0)}개`, problem.length > 0 && `동기화 오류 ${problem.length}건`].filter(Boolean).join(" · ");
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const previewable = lib?.nas ? [] : entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
+  const previewable = isNas ? [] : entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
   const previewIndex = previewable.findIndex((e) => e.path === previewPath);
 
   function open(entry: Entry) {
     if (entry.type === "dir") setLoc({ ...loc, path: entry.path });
-    else if (!lib?.nas && previewKind(entry.name)) setPreviewPath(entry.path);
+    else if (!isNas && previewKind(entry.name)) setPreviewPath(entry.path);
     else ops.download.mutate([entry]);
   }
   const menuActions: EntryMenuActions = {
     onOpen: open,
     onDownload: (e) => ops.download.mutate(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
     onRename: readOnly ? undefined : (e) => setRenamingPath(e.path),
-    onShare: lib?.nas ? undefined : (e) => setSharing(e),
-    onNearby: isTauri() && !lib?.nas ? sendNearby : undefined,
+    onShare: isNas ? undefined : (e) => setSharing(e),
+    onNearby: isTauri() && !isNas ? sendNearby : undefined,
     onDelete: readOnly ? undefined : (e) => void askDelete(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
     syncMenu: isTauri() ? (e) => (syncLinks.get(e.path) ? { link: syncLinks.get(e.path)! } : undefined) : undefined,
     onUnsync: setUnsyncing,
