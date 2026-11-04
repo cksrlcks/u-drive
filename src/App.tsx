@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { LoginScreen } from "@/features/auth/LoginScreen";
 import { MainScreen } from "@/features/browse/MainScreen";
 import { McpBridge, McpToolProvider } from "@/features/mcp/McpBridge";
+import { NasRoot } from "@/features/nas/NasRoot";
 import { NearbyRoot } from "@/features/nearby/NearbyRoot";
 import { SyncRoot } from "@/features/sync/SyncRoot";
 import { UploadQueueRoot } from "@/features/upload/useUploadQueue";
@@ -34,6 +35,7 @@ function Gate() {
           <McpToolProvider />
           <NearbyRoot />
           <SyncRoot />
+          <NasRoot />
           <MainScreen />
         </UploadQueueRoot>
       ) : (

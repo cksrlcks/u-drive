@@ -85,7 +85,7 @@ export function Sidebar({ libraries, loc, onNavigate, onRenameLibrary, onStarLib
                     />
                   </div>
                 ) : (
-                  <RowMenu onRename={lib.section === "내 저장소" ? () => setRenaming(lib.id) : undefined} star={{ starred: !!lib.starred, onToggle: () => onStarLibrary(lib, !lib.starred) }}>
+                  <RowMenu onRename={lib.section === "내 저장소" ? () => setRenaming(lib.id) : undefined} star={lib.nas ? undefined : { starred: !!lib.starred, onToggle: () => onStarLibrary(lib, !lib.starred) }}>
                     {/* 저장소 = 드라이브 루트. 하위 폴더에 있어도 그 저장소를 선택 표시 */}
                     <Row icon={<IconCloud className="size-4" />} label={lib.name} selected={page === "files" && active} onClick={() => {
                         setClickedIn(section);

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useThumbnailPref } from "@/features/settings/useThumbnailPref";
 import { useStorage } from "@/storage/StorageContext";
+import { NAS_PREFIX } from "@/storage/nas/withNas";
 import type { Entry } from "@/storage/StorageProvider";
 
 // svg는 서버가 썸네일을 만들지 않는다
@@ -16,7 +17,7 @@ export function useThumbnail(libId: string | null, entry: Entry, size: number): 
   const storage = useStorage();
   const [enabled] = useThumbnailPref();
   const ext = entry.name.includes(".") ? entry.name.split(".").pop()!.toLowerCase() : "";
-  const wanted = enabled && libId !== null && entry.type === "file" && THUMB_EXTS.has(ext);
+  const wanted = enabled && libId !== null && !libId.startsWith(NAS_PREFIX) && entry.type === "file" && THUMB_EXTS.has(ext);
 
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [seen, setSeen] = useState(false);

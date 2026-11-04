@@ -1,11 +1,18 @@
 import { useSyncExternalStore } from "react";
 import { getPrefs } from "@/features/settings/appPrefs";
 import { isTauri } from "@/features/shell/platform";
+import { nasDownload } from "@/storage/nas/native";
 import type { Entry } from "@/storage/StorageProvider";
 import { DownloadQueue, type DownloadItem, type Saver } from "./downloadQueue";
 
+/** 디자인나스(nas://)는 Rust가 직접 받고, 나머지는 HTTP */
+export function pickSaver(url: string): "nas" | "http" {
+  return url.startsWith("nas://") ? "nas" : "http";
+}
+
 /** Tauri: upload 플러그인이 디스크로 스트리밍(대용량도 메모리에 안 올림). 진행 이벤트는 100ms에 한 번만 반영. */
 const tauriSaver: Saver = async (url, path, onProgress) => {
+  if (pickSaver(url) === "nas") return nasDownload(url, path, onProgress); // 100ms 스로틀은 Rust가 함
   const { download } = await import("@tauri-apps/plugin-upload");
   let last = 0;
   await download(url, path, (p) => {

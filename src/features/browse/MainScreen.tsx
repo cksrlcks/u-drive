@@ -241,20 +241,20 @@ export function MainScreen() {
   const problem = allLinks.filter((l) => isSyncProblem(linkStates[l.id]?.status ?? "idle"));
   const syncNote = [syncing.length > 0 && `동기화 중 ${syncing.reduce((a, l) => a + linkStates[l.id].pending, 0)}개`, problem.length > 0 && `동기화 오류 ${problem.length}건`].filter(Boolean).join(" · ");
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const previewable = entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
+  const previewable = lib?.nas ? [] : entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
   const previewIndex = previewable.findIndex((e) => e.path === previewPath);
 
   function open(entry: Entry) {
     if (entry.type === "dir") setLoc({ ...loc, path: entry.path });
-    else if (previewKind(entry.name)) setPreviewPath(entry.path);
+    else if (!lib?.nas && previewKind(entry.name)) setPreviewPath(entry.path);
     else ops.download.mutate([entry]);
   }
   const menuActions: EntryMenuActions = {
     onOpen: open,
     onDownload: (e) => ops.download.mutate(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
     onRename: readOnly ? undefined : (e) => setRenamingPath(e.path),
-    onShare: (e) => setSharing(e),
-    onNearby: isTauri() ? sendNearby : undefined,
+    onShare: lib?.nas ? undefined : (e) => setSharing(e),
+    onNearby: isTauri() && !lib?.nas ? sendNearby : undefined,
     onDelete: readOnly ? undefined : (e) => void askDelete(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
     syncMenu: isTauri() ? (e) => (syncLinks.get(e.path) ? { link: syncLinks.get(e.path)! } : undefined) : undefined,
     onUnsync: setUnsyncing,
