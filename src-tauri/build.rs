@@ -36,6 +36,12 @@ const COMMANDS: &[&str] = &[
     "nas_host_stop",
     "nas_host_status",
     "nas_verify_reply",
+    "nas_browse",
+    "nas_peers",
+    "nas_info",
+    "nas_list",
+    "nas_index",
+    "nas_download",
 ];
 
 fn main() {

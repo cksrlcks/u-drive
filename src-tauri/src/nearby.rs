@@ -762,10 +762,10 @@ fn io_message(e: &io::Error) -> String {
 
 /// 진행 이벤트는 100ms에 한 번만
 #[derive(Default)]
-struct Ticker(Option<Instant>);
+pub(crate) struct Ticker(Option<Instant>);
 
 impl Ticker {
-    fn due(&mut self) -> bool {
+    pub(crate) fn due(&mut self) -> bool {
         let now = Instant::now();
         if self.0.is_some_and(|t| now.duration_since(t) < Duration::from_millis(100)) {
             return false;

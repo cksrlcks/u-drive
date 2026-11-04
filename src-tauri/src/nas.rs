@@ -14,15 +14,15 @@
 use crate::nasfs::{self, NasEntry};
 use crate::nearby::read_json;
 use crate::tls;
-use mdns_sd::{ServiceDaemon, ServiceInfo};
+use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, Debouncer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering::SeqCst};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -43,6 +43,11 @@ const REINDEX_DEBOUNCE: Duration = Duration::from_secs(60);
 /// 감시가 놓친 변경을 위해 하루 한 번 다시 만든다
 const REINDEX_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 const REFUSED: &str = "로그인 확인에 실패했습니다";
+/// 받는 쪽: 연결·TLS·응답이 끊기거나 깨졌을 때 모두 이 문구
+const CONNECT: &str = "디자인나스에 연결할 수 없습니다. 서버 PC의 Drive 앱이 켜져 있는지 확인하세요";
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// 응답 첫 줄 한도. 색인은 한 줄이 수십 MB, 큰 폴더 목록도 256KB를 넘는다
+const MAX_REPLY: u64 = 512 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Req {
@@ -190,6 +195,7 @@ pub struct NasHost {
 
 pub fn setup(app: &AppHandle) {
     app.manage(Arc::new(NasHost::default()));
+    app.manage(Arc::new(NasClient::default()));
 }
 
 /// 앱 종료: 다른 PC 목록에서 바로 빠지도록 mDNS에 알리고 닫는다
@@ -197,6 +203,14 @@ pub fn shutdown(app: &AppHandle) {
     if let Some(h) = app.try_state::<Arc<NasHost>>() {
         h.stop(app);
     }
+    if let Some(c) = app.try_state::<Arc<NasClient>>() {
+        c.stop(app);
+    }
+}
+
+/// Seafile 주소를 한 모양으로: 알리는 쪽과 찾는 쪽이 같은 서버면 늘 같은 문자열
+fn norm_server(server: &str) -> String {
+    server.trim().trim_end_matches('/').to_lowercase()
 }
 
 impl NasHost {
@@ -378,8 +392,7 @@ impl NasHost {
 /// 루트를 열고 mDNS로 알린다. server는 Seafile 주소(받는 쪽이 자기 서버와 같은지 본다)
 #[tauri::command]
 pub fn nas_host_start(app: AppHandle, state: State<Arc<NasHost>>, root: String, name: String, server: String) -> Result<(), String> {
-    let server = server.trim().trim_end_matches('/').to_lowercase();
-    state.inner().start(&app, PathBuf::from(root), name, server)
+    state.inner().start(&app, PathBuf::from(root), name, norm_server(&server))
 }
 
 #[tauri::command]
@@ -396,6 +409,262 @@ pub fn nas_host_status(state: State<Arc<NasHost>>) -> HostStatus {
 #[tauri::command]
 pub fn nas_verify_reply(state: State<Arc<NasHost>>, id: String, ok: bool) {
     state.reply(&id, ok);
+}
+
+// ── 받는 쪽 ─────────────────────────────────────────────
+
+/// mDNS로 찾은 디자인나스 하나
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct NasPeer {
+    /// mDNS fullname
+    id: String,
+    name: String,
+    addrs: Vec<SocketAddr>,
+    /// 인증서 지문. 연결할 때 이것과 같은 인증서인지 본다
+    fp: String,
+}
+
+#[derive(Serialize)]
+pub struct NasInfo {
+    name: String,
+    /// 색인 만든 시각 ms. 첫 색인 전이면 0
+    version: u64,
+}
+
+/// 응답 첫 줄. 여러 op의 필드를 한 구조체로 받는다(큰 색인을 Value로 한 번 더 만들지 않게)
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Reply {
+    ok: bool,
+    error: Option<String>,
+    name: String,
+    version: u64,
+    entries: Vec<NasEntry>,
+    size: u64,
+}
+
+#[derive(Serialize, Clone)]
+struct Progress {
+    id: String,
+    got: u64,
+    total: u64,
+}
+
+#[derive(Default)]
+pub struct NasClient {
+    /// (찾는 서버, 데몬)
+    browse: Mutex<Option<(String, ServiceDaemon)>>,
+    /// 찾기를 새로 할 때마다 올린다. 이전 찾기의 늦은 이벤트를 버리려고(peers 잠금 안에서 본다)
+    generation: AtomicU64,
+    peers: Mutex<HashMap<String, NasPeer>>,
+}
+
+impl NasClient {
+    /// 같은 서버로 찾는 중이면 그대로. 다르면 새로 찾는다
+    fn browse(self: &Arc<Self>, app: &AppHandle, server: String) -> Result<(), String> {
+        if self.browse.lock().unwrap().as_ref().is_some_and(|(s, _)| *s == server) {
+            return Ok(());
+        }
+        self.stop(app);
+        let daemon = ServiceDaemon::new().map_err(|e| e.to_string())?;
+        let events = match daemon.browse(SERVICE) {
+            Ok(e) => e,
+            Err(e) => {
+                let _ = daemon.shutdown();
+                return Err(e.to_string());
+            }
+        };
+        let run_gen = self.generation.load(SeqCst);
+        *self.browse.lock().unwrap() = Some((server.clone(), daemon));
+        let (c, app) = (self.clone(), app.clone());
+        // daemon을 shutdown하면 events가 끊겨 스레드도 끝난다
+        std::thread::spawn(move || {
+            for ev in events {
+                if !c.on_event(&app, run_gen, &server, ev) {
+                    break;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    fn stop(&self, app: &AppHandle) {
+        {
+            let mut peers = self.peers.lock().unwrap();
+            self.generation.fetch_add(1, SeqCst);
+            peers.clear();
+        }
+        if let Some((_, daemon)) = self.browse.lock().unwrap().take() {
+            let _ = daemon.shutdown();
+        }
+        let _ = app.emit("nas-peers", Vec::<NasPeer>::new());
+    }
+
+    /// 목록을 고치고 바뀌었으면 알린다. 이전 찾기(run_gen)의 이벤트면 false
+    fn on_event(&self, app: &AppHandle, run_gen: u64, server: &str, ev: ServiceEvent) -> bool {
+        let list = {
+            let mut peers = self.peers.lock().unwrap();
+            if self.generation.load(SeqCst) != run_gen {
+                return false;
+            }
+            let changed = match ev {
+                ServiceEvent::ServiceResolved(s) => match peer_from(&s, server) {
+                    Some(p) => {
+                        peers.insert(p.id.clone(), p);
+                        true
+                    }
+                    // 다른 서버·버전으로 다시 알렸으면 뺀다
+                    None => peers.remove(s.get_fullname()).is_some(),
+                },
+                ServiceEvent::ServiceRemoved(_, fullname) => peers.remove(&fullname).is_some(),
+                _ => false,
+            };
+            if !changed {
+                return true;
+            }
+            sorted(&peers)
+        };
+        let _ = app.emit("nas-peers", list);
+        true
+    }
+
+    fn peer(&self, id: &str) -> Result<NasPeer, String> {
+        self.peers.lock().unwrap().get(id).cloned().ok_or_else(|| CONNECT.into())
+    }
+
+    /// 요청 한 번(새 연결)
+    fn call(&self, peer: &str, req: &Req) -> Result<Reply, String> {
+        request(connect(&self.peer(peer)?)?, req).map(|(r, _)| r)
+    }
+}
+
+fn sorted(peers: &HashMap<String, NasPeer>) -> Vec<NasPeer> {
+    let mut v: Vec<NasPeer> = peers.values().cloned().collect();
+    v.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
+    v
+}
+
+/// 같은 서버·버전이고 지문·IPv4 주소가 있는 것만
+fn peer_from(s: &ResolvedService, server: &str) -> Option<NasPeer> {
+    let prop = |k: &str| s.get_property_val_str(k).unwrap_or_default().to_string();
+    if prop("server") != server || prop("v") != VERSION.to_string() || prop("fp").len() != 64 {
+        return None;
+    }
+    let addrs: Vec<SocketAddr> = s.get_addresses().iter().map(|ip| ip.to_ip_addr()).filter(|ip| ip.is_ipv4()).map(|ip| SocketAddr::new(ip, s.get_port())).collect();
+    if addrs.is_empty() {
+        return None;
+    }
+    Some(NasPeer { id: s.get_fullname().to_string(), name: prop("name"), addrs, fp: prop("fp") })
+}
+
+/// 주소를 차례로 5초씩 시도하고, 알린 지문과 같은 인증서인지 확인해 TLS로 감싼다
+fn connect(peer: &NasPeer) -> Result<impl Read + Write, String> {
+    for a in &peer.addrs {
+        let Ok(s) = TcpStream::connect_timeout(a, CONNECT_TIMEOUT) else { continue };
+        let _ = s.set_read_timeout(Some(IO_TIMEOUT));
+        let _ = s.set_write_timeout(Some(IO_TIMEOUT));
+        // 낡은 주소가 다른 PC로 이어지면 지문이 달라 실패한다: 다음 주소로
+        if let Ok(t) = tls::connect(s, &peer.fp) {
+            return Ok(t);
+        }
+    }
+    Err(CONNECT.into())
+}
+
+/// 요청 한 줄을 보내고 응답 첫 줄을 읽는다. ok:false면 제공 쪽 문구. 본문(read)은 돌려준 읽기에서 이어 읽는다
+fn request<S: Read + Write>(mut stream: S, req: &Req) -> Result<(Reply, BufReader<S>), String> {
+    send(&mut stream, req).and_then(|_| stream.flush()).map_err(|_| CONNECT)?;
+    let mut r = BufReader::with_capacity(64 * 1024, stream);
+    let mut line = Vec::new();
+    r.by_ref().take(MAX_REPLY).read_until(b'\n', &mut line).map_err(|_| CONNECT)?;
+    if line.last() != Some(&b'\n') {
+        return Err(CONNECT.into());
+    }
+    let reply: Reply = serde_json::from_slice(&line).map_err(|_| CONNECT)?;
+    if !reply.ok {
+        return Err(reply.error.unwrap_or_else(|| CONNECT.into()));
+    }
+    Ok((reply, r))
+}
+
+/// read 요청을 보내고 본문을 dest에 쓴다. progress(받은, 전체)는 시작에 한 번, 조각마다 한 번.
+/// 끊기거나 덜 오거나 쓰기에 실패하면 dest를 지운다. 거절되면 dest를 만들지 않는다
+fn receive_to(stream: impl Read + Write, req: &Req, dest: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
+    let (reply, mut r) = request(stream, req)?;
+    // 제공 쪽은 close_notify 없이 끊으므로 끝까지(read_to_end) 읽지 않고 딱 이만큼만
+    let total = reply.size.saturating_sub(req.start.unwrap_or(0));
+    let saving = |e: io::Error| format!("파일을 저장할 수 없습니다: {e}");
+    let mut out = File::create(dest).map_err(saving)?;
+    let res = (|| {
+        let mut buf = vec![0u8; 256 * 1024];
+        let mut got = 0;
+        progress(0, total);
+        while got < total {
+            let want = (total - got).min(buf.len() as u64) as usize;
+            let n = r.read(&mut buf[..want]).map_err(|_| CONNECT.to_string())?;
+            if n == 0 {
+                return Err(CONNECT.to_string());
+            }
+            out.write_all(&buf[..n]).map_err(saving)?;
+            got += n as u64;
+            progress(got, total);
+        }
+        Ok(())
+    })();
+    drop(out);
+    if res.is_err() {
+        let _ = fs::remove_file(dest);
+    }
+    res
+}
+
+fn ask_req(token: String, op: &str, path: Option<String>) -> Req {
+    Req { v: VERSION, token, op: op.into(), path, start: None }
+}
+
+/// 로그인한 Seafile 서버(server)의 디자인나스를 찾는다. 목록은 nas-peers 이벤트로
+#[tauri::command]
+pub fn nas_browse(app: AppHandle, state: State<Arc<NasClient>>, server: String) -> Result<(), String> {
+    state.inner().browse(&app, norm_server(&server))
+}
+
+#[tauri::command]
+pub fn nas_peers(state: State<Arc<NasClient>>) -> Vec<NasPeer> {
+    sorted(&state.peers.lock().unwrap())
+}
+
+#[tauri::command]
+pub async fn nas_info(state: State<'_, Arc<NasClient>>, peer: String, token: String) -> Result<NasInfo, String> {
+    let r = state.call(&peer, &ask_req(token, "info", None))?;
+    Ok(NasInfo { name: r.name, version: r.version })
+}
+
+#[tauri::command]
+pub async fn nas_list(state: State<'_, Arc<NasClient>>, peer: String, token: String, path: String) -> Result<Vec<NasEntry>, String> {
+    Ok(state.call(&peer, &ask_req(token, "list", Some(path)))?.entries)
+}
+
+#[tauri::command]
+pub async fn nas_index(state: State<'_, Arc<NasClient>>, peer: String, token: String) -> Result<Vec<NasEntry>, String> {
+    Ok(state.call(&peer, &ask_req(token, "index", None))?.entries)
+}
+
+/// path를 dest(화면이 고른 PC 경로)에 내려받는다. 진행은 nas-download {id, got, total}로 100ms에 한 번(끝은 꼭)
+#[tauri::command]
+pub async fn nas_download(app: AppHandle, state: State<'_, Arc<NasClient>>, peer: String, token: String, path: String, dest: String, id: String) -> Result<(), String> {
+    let peer = state.peer(&peer)?;
+    // 큰 파일은 몇 분 걸린다: async 실행기 스레드를 붙잡지 않게 따로 돌린다
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut tick = crate::nearby::Ticker::default();
+        receive_to(connect(&peer)?, &ask_req(token, "read", Some(path)), Path::new(&dest), |got, total| {
+            if got == total || tick.due() {
+                let _ = app.emit("nas-download", Progress { id: id.clone(), got, total });
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -480,6 +749,80 @@ mod tests {
         let (head, body) = ask(ctx, true, req("read", Some("/../x"), None));
         assert_eq!(head["ok"], false);
         assert!(body.is_empty());
+    }
+
+    /// 루프백에 serve를 하나 띄운다(연결 한 번). 클라이언트 쪽 테스트용
+    fn host(ctx: Arc<HostCtx>, ok: bool) -> (std::net::SocketAddr, std::thread::JoinHandle<()>) {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        (addr, std::thread::spawn(move || serve(l.accept().unwrap().0, &ctx, &|_| ok)))
+    }
+
+    #[test]
+    fn client_request_roundtrip() {
+        let root = temp_dir("client");
+        std::fs::write(root.join("a.bin"), b"0123456789").unwrap();
+        let ctx = Arc::new(HostCtx::new(root, "디자인나스".into()));
+
+        let (addr, h) = host(ctx.clone(), true);
+        let (reply, _) = request(TcpStream::connect(addr).unwrap(), &req("list", Some("/"), None)).unwrap();
+        h.join().unwrap();
+        let names: Vec<_> = reply.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["a.bin"]);
+
+        // 첫 색인 전 version 0도 정상 응답
+        let (addr, h) = host(ctx.clone(), true);
+        let (reply, _) = request(TcpStream::connect(addr).unwrap(), &req("info", None, None)).unwrap();
+        h.join().unwrap();
+        assert_eq!((reply.name.as_str(), reply.version), ("디자인나스", 0));
+
+        // 제공 쪽 거절 문구는 그대로
+        let (addr, h) = host(ctx, false);
+        let err = request(TcpStream::connect(addr).unwrap(), &req("list", Some("/"), None)).err().unwrap();
+        h.join().unwrap();
+        assert_eq!(err, REFUSED);
+    }
+
+    #[test]
+    fn download_writes_file_and_reports_progress() {
+        let root = temp_dir("dl");
+        let data: Vec<u8> = (0..700_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(root.join("big.bin"), &data).unwrap();
+        let ctx = Arc::new(HostCtx::new(root.clone(), "디자인나스".into()));
+        let dest = root.join("받은.bin");
+
+        let (addr, h) = host(ctx.clone(), true);
+        let mut last = (1, 0);
+        receive_to(TcpStream::connect(addr).unwrap(), &req("read", Some("/big.bin"), None), &dest, |g, t| last = (g, t)).unwrap();
+        h.join().unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), data);
+        assert_eq!(last, (data.len() as u64, data.len() as u64));
+
+        // 거절되면 dest를 만들지 않는다
+        let other = root.join("없음.bin");
+        let (addr, h) = host(ctx, true);
+        assert!(receive_to(TcpStream::connect(addr).unwrap(), &req("read", Some("/../x"), None), &other, |_, _| {}).is_err());
+        h.join().unwrap();
+        assert!(!other.exists());
+    }
+
+    #[test]
+    fn download_removes_partial_file() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        // 가짜 제공 쪽: 100바이트라 해 놓고 10바이트만 보내고 끊는다
+        let h = std::thread::spawn(move || {
+            let (s, _) = l.accept().unwrap();
+            let mut r = BufReader::new(s);
+            let _: Req = read_json(&mut r).unwrap();
+            let mut s = r.into_inner();
+            s.write_all(b"{\"ok\":true,\"size\":100}\n0123456789").unwrap();
+        });
+        let dest = temp_dir("partial").join("a.bin");
+        let err = receive_to(TcpStream::connect(addr).unwrap(), &req("read", Some("/a.bin"), None), &dest, |_, _| {}).unwrap_err();
+        h.join().unwrap();
+        assert_eq!(err, CONNECT);
+        assert!(!dest.exists());
     }
 
     #[test]

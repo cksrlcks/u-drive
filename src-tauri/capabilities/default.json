@@ -57,6 +57,12 @@
     "allow-nas-host-start",
     "allow-nas-host-stop",
     "allow-nas-host-status",
-    "allow-nas-verify-reply"
+    "allow-nas-verify-reply",
+    "allow-nas-browse",
+    "allow-nas-peers",
+    "allow-nas-info",
+    "allow-nas-list",
+    "allow-nas-index",
+    "allow-nas-download"
   ]
 }
