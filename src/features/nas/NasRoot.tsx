@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { isTauri } from "@/features/shell/platform";
+import { logError } from "@/lib/errorLog";
 import { onNasPeers, startNasBrowse } from "@/storage/nas/native";
 import { useSession } from "@/storage/StorageContext";
 
@@ -16,7 +17,7 @@ export function NasRoot() {
     const refresh = () => void qc.invalidateQueries({ queryKey: ["libraries"] });
     const off = onNasPeers(refresh);
     const timer = setInterval(refresh, REFRESH_MS);
-    void startNasBrowse(baseUrl).catch(() => {}); // 못 찾아도 앱은 그대로 — 다음 이벤트·갱신을 기다린다
+    void startNasBrowse(baseUrl).catch((e: unknown) => logError("nas", e)); // 못 찾아도 앱은 그대로 — 다음 이벤트·갱신을 기다린다
     return () => {
       off();
       clearInterval(timer);
