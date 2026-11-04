@@ -6,6 +6,7 @@ describe("plainName", () => {
   it("폴더 부분을 뗀다", () => {
     expect(plainName("../x")).toBe("x");
     expect(plainName("a\\b")).toBe("b");
+    expect(plainName("C:evil.dll")).toBe("evil.dll");
     expect(plainName("..\\..\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\x.bat")).toBe("x.bat");
   });
   it("비거나 ./..이면 file", () => {

@@ -10,9 +10,9 @@ export function pickSaver(url: string): "nas" | "http" {
   return url.startsWith("nas://") ? "nas" : "http";
 }
 
-/** 내 PC 경로에 붙일 이름: 폴더 부분(/, \)을 떼고, 비거나 ./..이면 "file". Rust localfs::plain_name과 같은 규칙 */
+/** 내 PC 경로에 붙일 이름: 폴더 부분(/, \, :)을 떼고, 비거나 ./..이면 "file". Rust localfs::plain_name과 같은 규칙 */
 export function plainName(name: string): string {
-  const base = (name.split(/[\\/]/).pop() ?? "").trim();
+  const base = (name.split(/[\\/:]/).pop() ?? "").trim();
   return base === "" || base === "." || base === ".." ? "file" : base;
 }
 

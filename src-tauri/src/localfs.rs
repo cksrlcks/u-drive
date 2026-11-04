@@ -85,8 +85,13 @@ pub fn real_path(path: String) -> String {
 
 /// 저장할 이름에서 경로 부분을 뗀다(../ 로 다른 폴더에 쓰지 못하게). 남는 게 없으면 "file"
 pub(crate) fn plain_name(name: &str) -> String {
-    let base = name.rsplit(['/', '\\']).next().unwrap_or("").trim();
+    let base = name.rsplit(['/', '\\', ':']).next().unwrap_or("").trim();
     if base.is_empty() || base == "." || base == ".." { "file".into() } else { base.to_string() }
+}
+
+/// 받은 이름이 경로·드라이브 문자 없는 한 칸짜리인지(앞뒤 공백은 그대로 둠)
+pub(crate) fn is_plain_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', ':'])
 }
 
 #[tauri::command]
@@ -212,6 +217,18 @@ mod tests {
         assert_eq!(plain_name("../../Library/LaunchAgents/x.plist"), "x.plist");
         assert_eq!(plain_name(r"..\..\x.bat"), "x.bat");
         assert_eq!(plain_name(".."), "file");
+        assert_eq!(plain_name("C:evil.dll"), "evil.dll");
+        assert_eq!(plain_name("a:b"), "b");
+    }
+
+    #[test]
+    fn is_plain_name_accepts_only_single_names() {
+        for n in [" 최종.psd", "a.psd"] {
+            assert!(is_plain_name(n), "{n}");
+        }
+        for n in ["C:evil.dll", "../x", r"a\b", "..", ".", ""] {
+            assert!(!is_plain_name(n), "{n}");
+        }
     }
 
     #[test]

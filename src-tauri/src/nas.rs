@@ -10,7 +10,7 @@
 //!
 //! 인증은 없다. 같은 사무실 네트워크의 Drive 앱은 누구나 읽기 전용으로 본다(토큰을 보내지 않는다).
 
-use crate::localfs::plain_name;
+use crate::localfs::is_plain_name;
 use crate::nasfs::{self, NasEntry};
 use crate::nearby::read_json;
 use crate::tls;
@@ -524,7 +524,7 @@ fn request<S: Read + Write>(mut stream: S, req: &Req) -> Result<(Reply, BufReade
         return Err(reply.error.unwrap_or_else(|| CONNECT.into()));
     }
     // 제공 쪽은 인증 없는 네트워크 상대다. 화면이 이름을 내 PC 경로에 붙이므로 한 칸짜리 이름만 받는다(../·\ 들어간 것은 버림)
-    reply.entries.retain(|e| plain_name(&e.name) == e.name);
+    reply.entries.retain(|e| is_plain_name(&e.name));
     Ok((reply, r))
 }
 
@@ -725,7 +725,7 @@ mod tests {
             let mut r = BufReader::new(s);
             let _: Req = read_json(&mut r).unwrap();
             let e = |name: &str| NasEntry { name: name.into(), kind: "file".into(), size: 1, mtime: 0.0, path: format!("/{name}") };
-            let entries = ["ok.psd", "../x", r"a\b", "..", "", r"..\..\Startup\x.bat"].map(e);
+            let entries = ["ok.psd", "../x", r"a\b", "..", "", r"..\..\Startup\x.bat", "C:evil.dll"].map(e);
             send(r.get_mut(), &Entries { ok: true, entries: &entries }).unwrap();
         });
         let (reply, _) = request(TcpStream::connect(addr).unwrap(), &req("list", Some("/"), None)).unwrap();
