@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { isTauri } from "@/features/shell/platform";
 import { createProvider } from "./createProvider";
 import { deviceInfo } from "./device";
 import { clearToken, loadSession, saveSession, type Session } from "./session";
+import { nasClient } from "./nas/native";
+import { withNas } from "./nas/withNas";
 import type { Connection, StorageProvider } from "./StorageProvider";
 
 interface SessionApi {
@@ -18,7 +21,10 @@ const SessionCtx = createContext<SessionApi | null>(null);
 
 export function StorageRoot({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>(() => loadSession());
-  const provider = useMemo(() => createProvider(session.connection, session.token), [session]);
+  const provider = useMemo(() => {
+    const p = createProvider(session.connection, session.token);
+    return isTauri() ? withNas(p, nasClient) : p;
+  }, [session]);
 
   const login = useCallback(async (conn: Connection, username: string, password: string, otp?: string, opts?: { persistent?: boolean }) => {
     const p = createProvider(conn, null);

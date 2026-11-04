@@ -14,6 +14,8 @@ export interface Library {
   readOnly?: boolean;
   /** 내용이 바뀔 때마다 달라지는 서버 식별자. 검색 인덱스 갱신 판단용 */
   headCommitId?: string;
+  /** 같은 사무실 서버 PC가 내주는 읽기 전용 NAS(데스크톱 앱 전용) */
+  nas?: boolean;
 }
 
 export interface Entry {
