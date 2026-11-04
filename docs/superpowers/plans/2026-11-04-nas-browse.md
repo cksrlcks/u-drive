@@ -4,7 +4,7 @@
 
 **Goal:** Seafile 서버 PC의 Drive 앱이 연결된 하드 폴더를 "NAS로 열기"로 열어 두면, 같은 사무실 네트워크의 디자이너 Drive 앱 사이드바에 "디자인나스"가 떠서 탐색·이름 검색·내려받기를 할 수 있게 한다.
 
-**Architecture:** 서버 PC 앱(제공 쪽)은 Rust가 하드를 읽고, TLS로 요청 네 가지(info·list·index·read)를 받고, mDNS로 자신을 알린다. 요청의 Seafile 토큰은 제공 쪽 WebView가 `getAccount()`로 확인해 Rust에 답한다(MCP Hub와 같은 Rust↔JS 왕복). 디자이너 앱(받는 쪽)은 Rust가 mDNS로 제공 쪽을 찾고 요청을 보내며, JS는 기존 `StorageProvider`를 감싸는 `withNas`로 NAS를 읽기 전용 라이브러리 하나처럼 보이게 한다.
+**Architecture:** 서버 PC 앱(제공 쪽)은 Rust가 하드를 읽고, TLS로 요청 네 가지(info·list·index·read)를 받고, mDNS로 자신을 알린다. 요청에는 로그인 정보를 싣지 않는다(사용자 결정: 토큰을 다른 기기에 보내지 않는다). 디자이너 앱(받는 쪽)은 Rust가 mDNS로 제공 쪽을 찾고 요청을 보내며, JS는 기존 `StorageProvider`를 감싸는 `withNas`로 NAS를 읽기 전용 라이브러리 하나처럼 보이게 한다.
 
 **Tech Stack:** Tauri 2 (Rust), `mdns-sd`·`rustls`(바로 보내기에서 쓰는 것)·`notify-debouncer-mini`(폴더 동기화에서 쓰는 것) — 새 의존성 없음. React 19, TanStack Query, Vitest.
 
@@ -14,7 +14,7 @@
 
 - 하드는 **읽기만** 한다. 쓰기·삭제·이동 금지. 디자이너 쪽은 업로드·이름 변경·삭제·공유·휴지통·미리보기·썸네일 없음(내려받기만).
 - 제공 쪽은 고른 하드 폴더(이하 루트) 밖을 절대 읽지 않는다(`..`, 절대 경로, 링크·정션으로 빠져나가기 금지).
-- 같은 Seafile 서버에 로그인한 사람만 허용한다(토큰을 제공 쪽이 `getAccount()`로 확인). 확인한 토큰은 SHA-256 해시로 10분 기억한다. 토큰은 저장하지 않는다.
+- **인증 없음 (사용자 결정, Task 3 뒤)**: 사무실 네트워크 안의 Drive 앱이면 누구나 읽기 전용으로 본다. 받는 쪽은 Seafile 토큰을 어떤 기기에도 보내지 않는다. 이유: 같은 네트워크의 아무 기기나 `_udrive-nas`를 알리면 토큰이 그 기기로 새기 때문. 받는 쪽은 자기 Seafile 서버와 같은 `server`를 알린 제공 쪽만 목록에 넣는다.
 - 사이드바 이름은 제공 쪽이 로그인한 계정 이름(`getAccount().name`, 예: "디자인나스"), 섹션 이름은 `"NAS"`.
 - 목록·색인에서 뺄 이름: `.`으로 시작, `$RECYCLE.BIN`, `System Volume Information`, `Thumbs.db`, `desktop.ini`, `~$`로 시작(대소문자 무시).
 - 색인 다시 만들기: 열 때, 변경 감시 60초 디바운스 후, 24시간마다.
@@ -26,7 +26,7 @@
 ## Review Focus
 
 1. **루트 밖 경로**(`/../Windows`, `/a/../../x`, `C:\Windows`, 루트 안의 정션이 밖을 가리킴): 거절해야 한다 → Task 1 `resolve_in_rejects_escape`.
-2. **토큰 없음·틀림·확인 응답이 안 옴**(제공 쪽 창이 아직 안 뜸): 거절하고 10초 안에 끝나야 한다(매달리지 않음) → Task 2 `refuses_without_verified_token`, `verify_timeout_refuses`.
+2. **받는 쪽이 토큰을 보내지 않음**: 요청 어디에도 Seafile 토큰이 없어야 한다 → Task 3b `request_has_no_token`.
 3. **제공 쪽 앱이 꺼짐·연결 끊김**: 디자이너 화면에 "디자인나스에 연결할 수 없습니다. 서버 PC의 Drive 앱이 켜져 있는지 확인하세요"가 나와야 한다 → Task 4 `list error becomes network StorageError`.
 4. **내려받는 중 연결이 끊김**: 반쯤 받은 파일이 남지 않아야 한다 → Task 3 `download_removes_partial_file`.
 5. **파일 수십만 개**: 검색 색인을 매번 다시 받지 않아야 한다(색인 버전이 같으면 캐시) → Task 4 `listLibraries uses index version as headCommitId`.
@@ -158,6 +158,22 @@ src/features/settings/keepAppOn.ts # 새: 자동 실행·트레이·자동 로�
 
 ---
 
+### Task 3b: 토큰 확인 걷어내기 (사용자 결정으로 추가)
+
+**Files:**
+- Modify: `src-tauri/src/nas.rs`, `src-tauri/src/lib.rs`, `src-tauri/build.rs`, `src-tauri/capabilities/default.json`
+
+**Interfaces:**
+- Produces: `Req`에서 `token` 필드 삭제. `serve(stream, host: &HostCtx)` (verify 인자 삭제). 커맨드 `nas_verify_reply`와 이벤트 `nas-verify`, 확인 캐시·대기(`verified`, `pending`, `wait_verify`, `check`) 삭제. 받는 쪽 커맨드에서 `token` 인자 삭제: `nas_info(peer)`, `nas_list(peer, path)`, `nas_index(peer)`, `nas_download(app, peer, path, dest, id)`.
+
+- [ ] **Step 1: 테스트 고치기** — 토큰 관련 테스트(`refuses_without_verified_token`, `verify_timeout_refuses`, 캐시 테스트)를 지우고, `request_has_no_token`을 넣는다: 클라이언트가 보내는 요청 줄(직렬화한 `Req`)에 `"token"` 문자열이 없다.
+- [ ] **Step 2: 실패 확인** — `cd src-tauri && cargo test --lib nas::` → 컴파일 실패 또는 FAIL
+- [ ] **Step 3: 구현** — 위 Produces대로 지운다. 남은 동작(경로 제한, 읽기 전용, 동시 연결 한도, 시간 제한, 색인)은 그대로.
+- [ ] **Step 4: 통과 확인** — `cargo test --lib`, `cargo build` 경고 없음, clippy nas*.rs 0건
+- [ ] **Step 5: Commit** — `git commit -m "fix(nas): 토큰을 보내지 않는다 — 로그인 확인 흐름 삭제"`
+
+---
+
 ### Task 4: `withNas` — NAS를 읽기 전용 라이브러리로
 
 **Files:**
@@ -168,8 +184,8 @@ src/features/settings/keepAppOn.ts # 새: 자동 실행·트레이·자동 로�
 - Consumes: Task 3 커맨드·이벤트
 - Produces:
   - `export type NasPeer = { id: string; name: string }`
-  - `export type NasClient = { peers(): NasPeer[]; info(peerId: string, token: string): Promise<{ name: string; version: number }>; list(peerId: string, token: string, path: string): Promise<Entry[]>; index(peerId: string, token: string): Promise<Entry[]> }` — `native.ts`의 `nasClient`가 구현. `Entry.id`는 `path`로 채운다.
-  - `native.ts`: `export const nasClient: NasClient`, `export function onNasPeers(cb: () => void): () => void`, `export function startNasBrowse(server: string): Promise<void>`, `export async function nasDownload(url: string, dest: string, onProgress: (got: number, total: number) => void): Promise<void>`, `export function setNasToken(token: string | null): void`
+  - `export type NasClient = { peers(): NasPeer[]; info(peerId: string): Promise<{ name: string; version: number }>; list(peerId: string, path: string): Promise<Entry[]>; index(peerId: string): Promise<Entry[]> }` — `native.ts`의 `nasClient`가 구현. `Entry.id`는 `path`로 채운다.
+  - `native.ts`: `export const nasClient: NasClient`, `export function onNasPeers(cb: () => void): () => void`, `export function startNasBrowse(server: string): Promise<void>`, `export async function nasDownload(url: string, dest: string, onProgress: (got: number, total: number) => void): Promise<void>`
   - `withNas.ts`: `export const NAS_PREFIX = "nas:"`, `export function withNas(inner: StorageProvider, client: NasClient): StorageProvider`, `export function nasUrl(peerId: string, path: string): string` → `` `nas://${encodeURIComponent(peerId)}${path}` ``, `export function parseNasUrl(url: string): { peerId: string; path: string } | null`
 
 - [ ] **Step 1: 실패하는 테스트 작성** (`withNas.test.ts`, 가짜 inner(`listLibraries` → `[seafileLib]`)·가짜 client)
@@ -180,7 +196,7 @@ it("listLibraries adds one read-only NAS library per peer, uses index version as
   expect(libs[1]).toMatchObject({ id: "nas:p1", name: "디자인나스", section: "NAS", readOnly: true, nas: true, headCommitId: "42", encrypted: false });
 });
 it("peer whose info fails is left out", ...);
-it("listDir / listTree on nas: go to the client with the inner token", ...);
+it("listDir / listTree on nas: go to the client", ...);
 it("list error becomes network StorageError", async () => {
   await expect(p.listDir("nas:p1", "/")).rejects.toMatchObject({ kind: "network", message: "디자인나스에 연결할 수 없습니다. 서버 PC의 Drive 앱이 켜져 있는지 확인하세요" });
 });
@@ -189,7 +205,7 @@ it("mutations and thumbnail on nas: reject, other libIds pass through", ...);
 ```
 
 - [ ] **Step 2: 실패 확인** — Run: `npx vitest run src/storage/nas/withNas.test.ts` → FAIL
-- [ ] **Step 3: 구현** — `libId`가 `NAS_PREFIX`로 시작하면 NAS, 아니면 `inner`로. NAS에서 `upload`·`mkdir`·`rename`·`remove`·`move`·`createShareLink`·`emptyTrash`·`restoreTrash`·`previewUrl`·`readText`·`thumbnail`은 `StorageError("server", "디자인나스는 내려받기만 할 수 있습니다")`, `listTrash`는 `[]`. `token`·`login`·`logout`·`isLoggedIn`·계정·그룹·공유 링크 목록은 그대로 위임. `StorageContext`에서 `setNasToken(provider.token)`.
+- [ ] **Step 3: 구현** — `libId`가 `NAS_PREFIX`로 시작하면 NAS, 아니면 `inner`로. NAS에서 `upload`·`mkdir`·`rename`·`remove`·`move`·`createShareLink`·`emptyTrash`·`restoreTrash`·`previewUrl`·`readText`·`thumbnail`은 `StorageError("server", "디자인나스는 내려받기만 할 수 있습니다")`, `listTrash`는 `[]`. `token`·`login`·`logout`·`isLoggedIn`·계정·그룹·공유 링크 목록은 그대로 위임.
 - [ ] **Step 4: 통과 확인** — `npm test && npx tsc --noEmit && npm run lint` → PASS
 - [ ] **Step 5: Commit** — `git commit -m "feat(nas): withNas — 디자인나스를 읽기 전용 라이브러리로"`
 
@@ -222,14 +238,14 @@ it("mutations and thumbnail on nas: reject, other libIds pass through", ...);
 - Modify: `src/features/settings/appPrefs.ts` (`nasRoot: string | null`, 기본 `null`), `src/features/settings/SettingsDialog.tsx` (`SettingsPage`에 `"nas"`, 메뉴 이름 "NAS"), `src/features/sync/useAddSyncFolder.ts` (켜 두기 확인·켜기를 `keepAppOn.ts`로 옮겨 재사용), `src/App.tsx` (`<NasHostRoot />`)
 
 **Interfaces:**
-- Consumes: Task 2 커맨드·이벤트, `pickFolder`(`src/features/upload/localUpload.ts`, 제목 인자 추가: `pickFolder(title = "업로드할 폴더")`), `createProvider`, `isPersistent`, `makePersistent`
+- Consumes: Task 2 커맨드·이벤트(`nas_host_start`/`nas_host_stop`/`nas_host_status`, `nas-host-status`), `pickFolder`(`src/features/upload/localUpload.ts`, 제목 인자 추가: `pickFolder(title = "업로드할 폴더")`), `isPersistent`, `makePersistent`
 - Produces:
   - `keepAppOn.ts`: `export async function needsKeepOn(): Promise<{ any: boolean; autoLoginOff: boolean }>`, `export async function enableKeepOn(makePersistent: () => void): Promise<string | null>` (실패 문구 또는 null) — `useAddSyncFolder`의 기존 동작과 같다.
 
 - [ ] **Step 1: 실패하는 테스트 작성** (`keepAppOn.test.ts`: autostart 모듈을 `vi.mock`, 자동 실행 꺼짐·트레이 꺼짐·자동 로그인 꺼짐 각각에서 `any === true`, 모두 켜짐이면 `false`. `enableKeepOn`이 `setPrefs({closeToTray:true})`와 `makePersistent`를 부른다)
 - [ ] **Step 2: 실패 확인** — `npx vitest run src/features/settings/keepAppOn.test.ts` → FAIL
 - [ ] **Step 3: 구현**
-  - `NasHostRoot`: `isTauri()`·로그인·`prefs.nasRoot`가 있으면 `nas_host_start(nasRoot, account.name, baseUrl)`, 없어지면 `nas_host_stop`. `nas-verify`를 받으면 `createProvider(session.connection, token).getAccount()` 성공 여부로 `nas_verify_reply(id, ok)`.
+  - `NasHostRoot`: `isTauri()`·로그인·`prefs.nasRoot`가 있으면 `nas_host_start(nasRoot, account.name, baseUrl)`, 없어지면 `nas_host_stop`.
   - `NasPage`: 닫힘이면 문구 "이 PC에 연결된 하드 폴더를 열어 두면, 같은 사무실 네트워크의 Drive 앱에 '{계정 이름}'으로 보입니다." + [폴더 골라서 열기]. 고르면 확인 창: "'{폴더}'를 열까요? 내려받기만 할 수 있고, 파일은 바뀌지 않습니다." + 켜 두기 체크박스(`needsKeepOn().any`일 때, 기본 체크, 문구 "앱을 켜 두는 설정도 함께 켜기" — 자동 로그인이 꺼져 있으면 "자동 로그인이 꺼져 있어 PC를 다시 켜면 멈춥니다." 덧붙임) [취소]/[열기] → `setPrefs({ nasRoot })`. 열림이면 경로, "검색 색인 {indexed}개{indexing ? ' 만드는 중…' : ''}", 오류 문구, [닫기] → `setPrefs({ nasRoot: null })`. 상태는 `nas_host_status` + `nas-host-status` 이벤트.
   - 처음 열 때 Windows 방화벽 창이 뜨면 "개인 네트워크"를 허용하라는 한 줄을 확인 창에 둔다.
 - [ ] **Step 4: 통과 확인** — `npm test && npx tsc --noEmit && npm run lint` → PASS
@@ -241,6 +257,7 @@ it("mutations and thumbnail on nas: reject, other libIds pass through", ...);
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-11-03-nas-browse-design.md` (초기 설정 4번: 확인 창에서 크기·파일 수를 미리 세지 않고, 연 뒤 색인 진행으로 보여 준다 — 3TB를 미리 세면 몇 분 걸려서)
+- 같은 문서 "2. 접근 확인"을 인증 없음(토큰을 보내지 않음, 이유 포함)으로 바꾸고, "정한 것"의 "권한은 하나"를 "사무실 네트워크 안의 Drive 앱이면 누구나"로 고친다
 - 같은 문서 1번의 "회사 네트워크에서만 켠다"를 지운다: 제공 쪽은 Seafile 서버 PC라 늘 사무실 안이고, 받는 쪽은 찾기만 하고 자신을 알리지 않는다
 - Create: `docs/superpowers/plans/2026-11-04-nas-browse-test-checklist.md`
 
