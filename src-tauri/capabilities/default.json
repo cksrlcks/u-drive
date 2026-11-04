@@ -57,7 +57,6 @@
     "allow-nas-host-start",
     "allow-nas-host-stop",
     "allow-nas-host-status",
-    "allow-nas-verify-reply",
     "allow-nas-browse",
     "allow-nas-peers",
     "allow-nas-info",
