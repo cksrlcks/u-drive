@@ -13,12 +13,12 @@ export function NasHostRoot() {
   const { nasRoot } = useAppPrefs();
   const name = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000, enabled: isTauri() }).data?.name;
   useEffect(() => {
-    if (!isTauri()) return;
-    void import("@tauri-apps/api/core").then(({ invoke }) => {
-      if (!nasRoot) return invoke("nas_host_stop");
-      // 실패는 설정 화면에도 status.error로 보인다
-      if (name) return invoke("nas_host_start", { root: nasRoot, name, server: baseUrl }).catch((e: unknown) => logError("nas", e));
-    });
+    if (!isTauri() || !nasRoot || !name) return;
+    const core = import("@tauri-apps/api/core");
+    // 실패는 설정 화면에도 status.error로 보인다
+    void core.then(({ invoke }) => invoke("nas_host_start", { root: nasRoot, name, server: baseUrl })).catch((e: unknown) => logError("nas", e));
+    // 닫음·로그아웃(언마운트)·값 변경 때 멈춘다. 값이 바뀌면 이어서 다시 시작한다
+    return () => void core.then(({ invoke }) => invoke("nas_host_stop")).catch(() => {});
   }, [nasRoot, name, baseUrl]);
   return null;
 }
