@@ -32,6 +32,10 @@ const COMMANDS: &[&str] = &[
     "sync_state_read",
     "sync_state_write",
     "sync_state_delete",
+    "nas_host_start",
+    "nas_host_stop",
+    "nas_host_status",
+    "nas_verify_reply",
 ];
 
 fn main() {

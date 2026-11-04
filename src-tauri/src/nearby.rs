@@ -719,7 +719,7 @@ fn peer_closed(stream: &TcpStream) -> bool {
     }
 }
 
-fn read_json<T: DeserializeOwned>(r: &mut impl BufRead) -> io::Result<T> {
+pub(crate) fn read_json<T: DeserializeOwned>(r: &mut impl BufRead) -> io::Result<T> {
     let mut line = String::new();
     r.take(MAX_LINE).read_line(&mut line)?;
     if !line.ends_with('\n') {

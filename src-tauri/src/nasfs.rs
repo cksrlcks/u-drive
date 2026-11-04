@@ -55,7 +55,7 @@ pub fn list(root: &Path, rel: &str) -> Result<Vec<NasEntry>, String> {
             Some(entry(name.clone(), format!("{base}/{name}"), &m))
         })
         .collect();
-    out.sort_by(|a, b| (a.kind != "dir", a.name.to_lowercase()).cmp(&(b.kind != "dir", b.name.to_lowercase())));
+    out.sort_by_key(|a| (a.kind != "dir", a.name.to_lowercase()));
     Ok(out)
 }
 
@@ -70,7 +70,7 @@ pub fn build_index(root: &Path, mut progress: impl FnMut(usize)) -> Vec<NasEntry
             let (Ok(ft), Ok(m)) = (e.file_type(), e.metadata()) else { continue };
             let path = format!("{base}/{name}");
             out.push(entry(name, path.clone(), &m));
-            if out.len() % 1000 == 0 {
+            if out.len().is_multiple_of(1000) {
                 progress(out.len());
             }
             if ft.is_dir() {

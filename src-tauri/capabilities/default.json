@@ -53,6 +53,10 @@
     "allow-sync-unwatch",
     "allow-sync-state-read",
     "allow-sync-state-write",
-    "allow-sync-state-delete"
+    "allow-sync-state-delete",
+    "allow-nas-host-start",
+    "allow-nas-host-stop",
+    "allow-nas-host-status",
+    "allow-nas-verify-reply"
   ]
 }

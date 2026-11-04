@@ -1,6 +1,6 @@
 pub mod mcp;
 mod localfs;
-#[allow(dead_code)]
+mod nas;
 mod nasfs;
 mod nearby;
 mod syncfs;
@@ -282,6 +282,7 @@ pub fn run() {
         .setup(|app| {
             mcp::setup(app.handle());
             nearby::setup(app.handle());
+            nas::setup(app.handle());
             // 로그인할 때 자동 실행이면 창 없이 트레이에만 둔다
             if std::env::args().any(|a| a == "--autostart") {
                 if let Some(w) = app.get_webview_window("main") {
@@ -355,12 +356,13 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![greet, file_icon, quit, device_name, set_prefs, free_path, append_log, open_log_dir, mcp::mcp_ready, mcp::mcp_respond, localfs::read_local_file, localfs::recent_files, localfs::real_path, localfs::write_local_file, localfs::list_upload_files, localfs::read_local_range, nearby::nearby_start, nearby::nearby_stop, nearby::nearby_peers, nearby::nearby_offers, nearby::nearby_send, nearby::nearby_answer, nearby::nearby_cancel, nearby::nearby_cleanup, nearby::nearby_open_settings, syncfs::sync_scan, syncfs::sync_watch, syncfs::sync_unwatch, syncfs::sync_state_read, syncfs::sync_state_write, syncfs::sync_state_delete])
+        .invoke_handler(tauri::generate_handler![greet, file_icon, quit, device_name, set_prefs, free_path, append_log, open_log_dir, mcp::mcp_ready, mcp::mcp_respond, localfs::read_local_file, localfs::recent_files, localfs::real_path, localfs::write_local_file, localfs::list_upload_files, localfs::read_local_range, nearby::nearby_start, nearby::nearby_stop, nearby::nearby_peers, nearby::nearby_offers, nearby::nearby_send, nearby::nearby_answer, nearby::nearby_cancel, nearby::nearby_cleanup, nearby::nearby_open_settings, syncfs::sync_scan, syncfs::sync_watch, syncfs::sync_unwatch, syncfs::sync_state_read, syncfs::sync_state_write, syncfs::sync_state_delete, nas::nas_host_start, nas::nas_host_stop, nas::nas_host_status, nas::nas_verify_reply])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {
             if let tauri::RunEvent::Exit = _event {
                 nearby::shutdown(_app);
+                nas::shutdown(_app);
             }
             // macOS: 창을 숨긴 뒤 Dock 아이콘을 누르면 다시 띄운다
             #[cfg(target_os = "macos")]
