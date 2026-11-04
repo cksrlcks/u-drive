@@ -10,6 +10,7 @@
 //!
 //! 인증은 없다. 같은 사무실 네트워크의 Drive 앱은 누구나 읽기 전용으로 본다(토큰을 보내지 않는다).
 
+use crate::localfs::plain_name;
 use crate::nasfs::{self, NasEntry};
 use crate::nearby::read_json;
 use crate::tls;
@@ -516,10 +517,12 @@ fn request<S: Read + Write>(mut stream: S, req: &Req) -> Result<(Reply, BufReade
     if line.last() != Some(&b'\n') {
         return Err(CONNECT.into());
     }
-    let reply: Reply = serde_json::from_slice(&line).map_err(|_| CONNECT)?;
+    let mut reply: Reply = serde_json::from_slice(&line).map_err(|_| CONNECT)?;
     if !reply.ok {
         return Err(reply.error.unwrap_or_else(|| CONNECT.into()));
     }
+    // 제공 쪽은 인증 없는 네트워크 상대다. 화면이 이름을 내 PC 경로에 붙이므로 한 칸짜리 이름만 받는다(../·\ 들어간 것은 버림)
+    reply.entries.retain(|e| plain_name(&e.name) == e.name);
     Ok((reply, r))
 }
 
@@ -708,7 +711,25 @@ mod tests {
         let (reply, _) = request(TcpStream::connect(addr).unwrap(), &req("info", None, None)).unwrap();
         h.join().unwrap();
         assert_eq!((reply.name.as_str(), reply.version), ("디자인나스", 0));
+    }
 
+    #[test]
+    fn client_drops_entries_with_path_names() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        // 가짜 제공 쪽: 이름에 경로를 넣어 받는 PC의 다른 폴더에 쓰게 하려 한다
+        let h = std::thread::spawn(move || {
+            let (s, _) = l.accept().unwrap();
+            let mut r = BufReader::new(s);
+            let _: Req = read_json(&mut r).unwrap();
+            let e = |name: &str| NasEntry { name: name.into(), kind: "file".into(), size: 1, mtime: 0.0, path: format!("/{name}") };
+            let entries = ["ok.psd", "../x", r"a\b", "..", "", r"..\..\Startup\x.bat"].map(e);
+            send(r.get_mut(), &Entries { ok: true, entries: &entries }).unwrap();
+        });
+        let (reply, _) = request(TcpStream::connect(addr).unwrap(), &req("list", Some("/"), None)).unwrap();
+        h.join().unwrap();
+        let names: Vec<_> = reply.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["ok.psd"]);
     }
 
     #[test]
