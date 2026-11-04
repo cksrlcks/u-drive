@@ -1,5 +1,7 @@
 pub mod mcp;
 mod localfs;
+#[allow(dead_code)]
+mod nasfs;
 mod nearby;
 mod syncfs;
 mod tls;

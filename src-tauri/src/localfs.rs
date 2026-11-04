@@ -135,7 +135,7 @@ pub async fn list_upload_files(paths: Vec<String>) -> Vec<UploadFile> {
 }
 
 /// 업로드 조각: path의 start부터 len바이트(파일 끝이면 그보다 짧게)
-fn read_range(path: &Path, start: u64, len: u64) -> Result<Vec<u8>, String> {
+pub(crate) fn read_range(path: &Path, start: u64, len: u64) -> Result<Vec<u8>, String> {
     use std::io::{Read, Seek, SeekFrom};
     let mut f = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     f.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
