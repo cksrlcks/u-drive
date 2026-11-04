@@ -24,9 +24,10 @@ fn excluded(name: &str) -> bool {
     n.starts_with('.') || n.starts_with("~$") || ["$recycle.bin", "system volume information", "thumbs.db", "desktop.ini"].contains(&n.as_str())
 }
 
-/// 루트 기준 경로("/a/b")를 실제 경로로. `..`·절대 경로·링크/정션 탈출은 거절
+/// 루트 기준 경로("/a/b")를 실제 경로로. `..`·절대 경로·링크/정션 탈출·제외된 이름(목록에 안 보이는 것)은 거절
 pub fn resolve_in(root: &Path, rel: &str) -> Result<PathBuf, String> {
-    if !rel.starts_with('/') || rel.contains('\\') || rel.split('/').any(|s| s == "..") {
+    // ".."도 '.'으로 시작해 excluded에 걸린다
+    if !rel.starts_with('/') || rel.contains('\\') || rel.split('/').any(excluded) {
         return Err(DENIED.into());
     }
     let root = std::fs::canonicalize(root).map_err(|_| DENIED.to_string())?;
@@ -99,7 +100,10 @@ mod tests {
         let root = temp_dir("nas-root");
         std::fs::create_dir_all(root.join("a")).unwrap();
         assert!(resolve_in(&root, "/a").is_ok());
-        for bad in ["/../x", "/a/../../x", "a", r"C:\Windows", r"/a\..\..\x"] {
+        std::fs::create_dir_all(root.join("$RECYCLE.BIN/s")).unwrap();
+        std::fs::create_dir_all(root.join("a/.git")).unwrap();
+        std::fs::write(root.join("a/.git/config"), "x").unwrap();
+        for bad in ["/../x", "/a/../../x", "a", r"C:\Windows", r"/a\..\..\x", "/$RECYCLE.BIN/s", "/$recycle.bin", "/a/.git/config", "/a/./.git"] {
             assert!(resolve_in(&root, bad).is_err(), "{bad}");
         }
     }
