@@ -17,7 +17,7 @@ export async function localTasks(paths: string[], targetDir: string): Promise<Up
 }
 
 /** 폴더 선택 창. 취소하면 null */
-export async function pickFolder(): Promise<string | null> {
+export async function pickFolder(title = "업로드할 폴더"): Promise<string | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");
-  return open({ title: "업로드할 폴더", directory: true });
+  return open({ title, directory: true });
 }

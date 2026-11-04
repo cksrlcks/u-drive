@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { IconBuildingBroadcastTower, IconPlug, IconSettings, IconUserCircle, IconX } from "@tabler/icons-react";
+import { IconBuildingBroadcastTower, IconDeviceDesktopShare, IconPlug, IconSettings, IconUserCircle, IconX } from "@tabler/icons-react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "cn";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,9 +15,10 @@ import { openLogDir } from "@/lib/errorLog";
 import { formatSize } from "@/lib/format";
 import { useSession, useStorage } from "@/storage/StorageContext";
 import { setPrefs, useAppPrefs, type Theme } from "./appPrefs";
+import { NasPage } from "./NasPage";
 import { useThumbnailPref } from "./useThumbnailPref";
 
-export type SettingsPage = "account" | "general" | "send" | "claude";
+export type SettingsPage = "account" | "general" | "send" | "nas" | "claude";
 
 interface Props {
   open: boolean;
@@ -31,9 +32,10 @@ const PAGES: { id: Page; label: string; icon: ComponentType<{ className?: string
   { id: "general", label: "일반", icon: IconSettings },
   { id: "account", label: "내 계정", icon: IconUserCircle },
   { id: "send", label: "바로 보내기", icon: IconBuildingBroadcastTower, app: true },
+  { id: "nas", label: "NAS", icon: IconDeviceDesktopShare, app: true },
   { id: "claude", label: "Claude 연결", icon: IconPlug },
 ];
-const TITLE: Record<Page, string> = { account: "내 계정", general: "일반", send: "바로 보내기", claude: "Claude 연결" };
+const TITLE: Record<Page, string> = { account: "내 계정", general: "일반", send: "바로 보내기", nas: "NAS", claude: "Claude 연결" };
 
 /** 설정: 왼쪽 탐색 + 오른쪽 항목 목록. 서버 변경은 로그아웃 후 로그인 화면에서 한다 */
 export function SettingsDialog({ open, page = "general", onClose }: Props) {
@@ -77,7 +79,7 @@ function Body({ initial }: { initial: Page }) {
             <span className="sr-only">닫기</span>
           </DialogPrimitive.Close>
         </header>
-        <div className="flex-1 overflow-y-auto px-8 pt-6 pb-8">{page === "account" ? <AccountPage /> : page === "claude" ? <ClaudePage /> : page === "send" ? <SendPage /> : <GeneralPage />}</div>
+        <div className="flex-1 overflow-y-auto px-8 pt-6 pb-8">{page === "account" ? <AccountPage /> : page === "claude" ? <ClaudePage /> : page === "send" ? <SendPage /> : page === "nas" ? <NasPage /> : <GeneralPage />}</div>
       </div>
     </>
   );

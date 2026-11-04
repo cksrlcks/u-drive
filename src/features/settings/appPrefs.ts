@@ -21,6 +21,8 @@ export interface AppPrefs {
   receivePcDir: string | null;
   /** 드라이브로 받을 폴더. null이면 로그인할 때 내 첫 저장소의 '받은 파일'로 정한다(폴더는 받을 때 만든다) */
   receiveDrive: DriveFolder | null;
+  /** NAS로 열어 둔 PC 폴더(읽기 전용). null이면 닫힘 */
+  nasRoot: string | null;
 }
 
 export interface DriveFolder {
@@ -30,7 +32,7 @@ export interface DriveFolder {
 }
 
 const KEY = "seadrive.prefs";
-const DEFAULTS: AppPrefs = { theme: "system", font: "system", zoom: 1, closeToTray: true, downloadDir: null, nearbyVisible: true, receiveTo: null, receivePcDir: null, receiveDrive: null };
+const DEFAULTS: AppPrefs = { theme: "system", font: "system", zoom: 1, closeToTray: true, downloadDir: null, nearbyVisible: true, receiveTo: null, receivePcDir: null, receiveDrive: null, nasRoot: null };
 const listeners = new Set<() => void>();
 
 function load(): AppPrefs {

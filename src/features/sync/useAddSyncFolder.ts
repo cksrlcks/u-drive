@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createElement, useRef, useState, type ReactNode } from "react";
-import { setPrefs, getPrefs } from "@/features/settings/appPrefs";
+import { enableKeepOn, needsKeepOn } from "@/features/settings/keepAppOn";
 import { AddSyncDialog, type AddSyncInfo } from "@/features/sync/AddSyncDialog";
 import { checkNewLink, isWholeDrive } from "@/features/sync/checkNewLink";
 import { accountKey, addLink, getLinks } from "@/features/sync/links";
@@ -9,7 +9,6 @@ import { requestRun } from "@/features/sync/syncState";
 import type { Location } from "@/features/browse/useCurrentDir";
 import { useSession, useStorage } from "@/storage/StorageContext";
 import { baseName, joinPath } from "@/storage/path";
-import { isPersistent } from "@/storage/session";
 import type { Entry, Library } from "@/storage/StorageProvider";
 
 type State = { error: string } | { info: AddSyncInfo; localRoot: string; account: string; libId: string; dir: string };
@@ -51,8 +50,7 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
         quotaLeft,
       });
       if (!check.ok) return setState({ error: check.reason });
-      const autostart = await import("@tauri-apps/plugin-autostart").then((a) => a.isEnabled()).catch(() => true);
-      const autoLogin = isPersistent();
+      const keep = await needsKeepOn();
       setOpenId((n) => n + 1);
       setState({
         localRoot: picked,
@@ -66,8 +64,8 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
           quotaLeft,
           existing: check.existing,
           network: picked.startsWith("\\\\"),
-          keepOn: !autostart || !getPrefs().closeToTray || !autoLogin,
-          autoLoginOff: !autoLogin,
+          keepOn: keep.any,
+          autoLoginOff: keep.autoLoginOff,
         },
       });
     } catch (e) {
@@ -90,16 +88,7 @@ export function useAddSyncFolder(loc: Location, lib: Library | undefined, entrie
     }
     const id = crypto.randomUUID();
     addLink({ id, account, libId, drivePath, localRoot, paused: false, fresh: info.existing });
-    let failed: string | null = null;
-    if (keepOn) {
-      try {
-        await import("@tauri-apps/plugin-autostart").then((a) => a.enable());
-      } catch (e) {
-        failed = `자동 실행을 켜지 못했습니다 (${e instanceof Error ? e.message : String(e)})`;
-      }
-      setPrefs({ closeToTray: true });
-      makePersistent();
-    }
+    const failed = keepOn ? await enableKeepOn(makePersistent) : null;
     requestRun(id); // SyncRoot가 먼저 실행했으면 아무 일도 안 한다
     void qc.invalidateQueries({ queryKey: ["dir", libId, dir] });
     setBusy(false);
