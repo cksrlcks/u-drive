@@ -23,6 +23,8 @@ export interface AppPrefs {
   receiveDrive: DriveFolder | null;
   /** NAS로 열어 둔 PC 폴더(읽기 전용). null이면 닫힘 */
   nasRoot: string | null;
+  /** NAS를 열 때의 계정 이름(다른 PC에 보이는 이름). 서버 PC가 켜질 때 서버가 아직 안 떠 있어도 이 이름으로 다시 연다 */
+  nasName: string | null;
 }
 
 export interface DriveFolder {
@@ -32,7 +34,7 @@ export interface DriveFolder {
 }
 
 const KEY = "seadrive.prefs";
-const DEFAULTS: AppPrefs = { theme: "system", font: "system", zoom: 1, closeToTray: true, downloadDir: null, nearbyVisible: true, receiveTo: null, receivePcDir: null, receiveDrive: null, nasRoot: null };
+const DEFAULTS: AppPrefs = { theme: "system", font: "system", zoom: 1, closeToTray: true, downloadDir: null, nearbyVisible: true, receiveTo: null, receivePcDir: null, receiveDrive: null, nasRoot: null, nasName: null };
 const listeners = new Set<() => void>();
 
 function load(): AppPrefs {

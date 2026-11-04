@@ -15,7 +15,8 @@ export function NasPage() {
   const { makePersistent } = useSession();
   const { nasRoot } = useAppPrefs();
   const status = useNasHostStatus();
-  const name = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000 }).data?.name ?? "…";
+  const account = useQuery({ queryKey: ["account"], queryFn: () => storage.getAccount(), staleTime: 30_000 }).data?.name;
+  const name = account ?? "…";
   const [picked, setPicked] = useState<string | null>(null);
   const [warn, setWarn] = useState<string | null>(null);
 
@@ -28,7 +29,7 @@ export function NasPage() {
     setPicked(null);
     if (!root) return;
     setWarn(keepOn ? await enableKeepOn(makePersistent) : null);
-    setPrefs({ nasRoot: root });
+    setPrefs({ nasRoot: root, nasName: account ?? null });
   }
 
   return (
@@ -43,7 +44,7 @@ export function NasPage() {
             </span>
             {status.error && <span className="text-sm text-destructive">{status.error}</span>}
             {warn && <span className="text-sm text-destructive">{warn}</span>}
-            <button type="button" onClick={() => setPrefs({ nasRoot: null })} className={btn}>
+            <button type="button" onClick={() => setPrefs({ nasRoot: null, nasName: null })} className={btn}>
               닫기
             </button>
           </>
