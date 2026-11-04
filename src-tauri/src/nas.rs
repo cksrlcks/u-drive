@@ -34,7 +34,7 @@ const VERSION: u32 = 1;
 /// 상대가 이만큼 아무것도 보내지 않으면 끊는다
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
 /// 동시에 처리하는 연결 수. 넘으면 바로 끊는다(연결마다 스레드 하나)
-const MAX_CONNS: usize = 16;
+const MAX_CONNS: usize = 64;
 /// 마지막 변경 뒤 이만큼 조용하면 색인을 다시 만든다
 const REINDEX_DEBOUNCE: Duration = Duration::from_secs(60);
 /// 감시가 놓친 변경을 위해 하루 한 번 다시 만든다
@@ -469,10 +469,12 @@ impl NasClient {
         self.peers.lock().unwrap().get(id).cloned().ok_or_else(|| CONNECT.into())
     }
 
-    /// 요청 한 번(새 연결)
-    fn call(&self, peer: &str, req: &Req) -> Result<Reply, String> {
-        request(connect(&self.peer(peer)?)?, req).map(|(r, _)| r)
-    }
+}
+
+/// 요청 한 번(새 연결). 연결·응답 기다림은 async 실행기 밖에서
+async fn call(state: &NasClient, peer: &str, req: Req) -> Result<Reply, String> {
+    let peer = state.peer(peer)?;
+    tauri::async_runtime::spawn_blocking(move || request(connect(&peer)?, &req).map(|(r, _)| r)).await.map_err(|e| e.to_string())?
 }
 
 fn sorted(peers: &HashMap<String, NasPeer>) -> Vec<NasPeer> {
@@ -574,18 +576,18 @@ pub fn nas_peers(state: State<Arc<NasClient>>) -> Vec<NasPeer> {
 
 #[tauri::command]
 pub async fn nas_info(state: State<'_, Arc<NasClient>>, peer: String) -> Result<NasInfo, String> {
-    let r = state.call(&peer, &ask_req("info", None))?;
+    let r = call(&state, &peer, ask_req("info", None)).await?;
     Ok(NasInfo { name: r.name, version: r.version })
 }
 
 #[tauri::command]
 pub async fn nas_list(state: State<'_, Arc<NasClient>>, peer: String, path: String) -> Result<Vec<NasEntry>, String> {
-    Ok(state.call(&peer, &ask_req("list", Some(path)))?.entries)
+    Ok(call(&state, &peer, ask_req("list", Some(path))).await?.entries)
 }
 
 #[tauri::command]
 pub async fn nas_index(state: State<'_, Arc<NasClient>>, peer: String) -> Result<Vec<NasEntry>, String> {
-    Ok(state.call(&peer, &ask_req("index", None))?.entries)
+    Ok(call(&state, &peer, ask_req("index", None)).await?.entries)
 }
 
 /// path를 dest(화면이 고른 PC 경로)에 내려받는다. 진행은 nas-download {id, got, total}로 100ms에 한 번(끝은 꼭)
