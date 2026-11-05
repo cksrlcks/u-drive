@@ -21,7 +21,8 @@ export interface ToolCtx {
   storage: StorageProvider;
   uploads: UploadQueue;
   downloads: DownloadQueue;
-  searchIndex(): { entries: IndexedEntry[]; loading: boolean };
+  /** 검색할 때 받아 온다(받아 둔 게 있으면 그대로) */
+  searchIndex(): Promise<IndexedEntry[]>;
   /** 로컬 파일을 읽어 File로(이름 = 경로의 마지막 부분) */
   readLocalFile(path: string): Promise<File>;
   /** dir 안에서 name과 겹치지 않는 경로 */
@@ -313,14 +314,10 @@ async function run(name: string, args: Record<string, unknown>, ctx: ToolCtx): P
     case "preview":
       return preview(ctx, isStr(args.library) ? (args.library as string) : await myLibraryId(ctx), arg(args, "path", isStr));
     case "search": {
-      const { entries, loading } = ctx.searchIndex();
+      const entries = await ctx.searchIndex();
       const libNames = new Map((await scopedLibraries(ctx, args)).map((l) => [l.id, l.name]));
       const results = searchEntries(entries.filter((e) => libNames.has(e.libId)), arg(args, "query", isStr), 20).map((e) => ({ library: e.libId, libraryName: libNames.get(e.libId) ?? e.libId, path: e.path, type: e.type, size: formatSize(e.size) }));
-      const note = loading
-        ? "색인 중이라 결과가 일부일 수 있습니다"
-        : !results.length && args.scope !== "all"
-          ? "내 저장소에는 없습니다. 공유받은 저장소까지 찾을지 사용자에게 물어본 뒤 scope: all로 다시 찾으세요."
-          : undefined;
+      const note = !results.length && args.scope !== "all" ? "내 저장소에는 없습니다. 공유받은 저장소까지 찾을지 사용자에게 물어본 뒤 scope: all로 다시 찾으세요." : undefined;
       return json({ results, note });
     }
     case "upload_file": {

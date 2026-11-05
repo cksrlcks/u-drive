@@ -15,7 +15,7 @@ export function UploadQueueRoot({ children }: { children: ReactNode }) {
     queue.onAllDone = (libId, dirs) => {
       for (const d of dirs) void qc.invalidateQueries({ queryKey: ["dir", libId, d] });
       void qc.invalidateQueries({ queryKey: ["account"] });
-      void qc.invalidateQueries({ queryKey: ["libraries"] }); // head commit이 바뀌어 검색 인덱스가 갱신되도록
+      void qc.invalidateQueries({ queryKey: ["libraries"] }); // 사용량·head commit 갱신(검색 색인은 TREE_FRESH_MS가 지난 뒤 검색할 때 다시 받는다)
     };
     queue.onUnauthorized = () => {
       queue.cancelAll();

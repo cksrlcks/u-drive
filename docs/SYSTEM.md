@@ -418,7 +418,10 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Libs["저장소 목록<br/>(저장소마다 headCommitId)"] --> Check{"localStorage 캐시의<br/>commit과 같은가"}
+    Open["검색창을 누름<br/>또는 Claude search 도구"] --> Fresh{"받은 지 5분 안?"}
+    Fresh -- "예" --> Index
+    Fresh -- "아니오" --> Libs["저장소 목록<br/>(저장소마다 headCommitId)"]
+    Libs --> Check{"메모리·localStorage 캐시의<br/>commit과 같은가"}
     Check -- "같음" --> Cache["캐시 사용"]
     Check -- "다름" --> Fetch["저장소 전체 트리 받기<br/>/api/v2.1/repos/:id/dir/?recursive=1"]
     Fetch --> Save["캐시에 저장"]
@@ -428,10 +431,12 @@ flowchart LR
 ```
 
 - **모든 저장소**를 하위 폴더까지 이름으로 찾는다. 암호화 저장소는 뺀다.
-- 내용이 바뀐 저장소만 다시 받는다. 그래서 두 번째부터는 빠르다.
+- **필요할 때만 받는다.** 로그인할 때가 아니라 검색창을 누르거나 Claude가 `search`를 부를 때 받는다. 전체 트리 요청은 무겁다. 로그인·업로드 때마다 받던 시절에는 큰 저장소에서 서버가 504로 밀리고, 같은 저장소의 폴더 목록까지 시간 초과가 났다.
+- **받은 뒤 5분은 그대로 쓴다**(`TREE_FRESH_MS`). 업로드·동기화로 커밋이 몇 초마다 바뀌어도 다시 받지 않는다. 그래서 방금 올린 파일은 최대 5분 동안 검색에 안 나올 수 있다.
+- 5분이 지나면 내용이 바뀐 저장소만 다시 받는다.
 - 결과를 고르면 폴더는 그 안으로, 파일은 그 파일이 있는 폴더로 가서 해당 파일을 선택한다.
-- localStorage 용량(약 5MB)을 넘는 큰 저장소는 캐시 없이 매번 받는다.
-- Claude의 `search` 도구도 이 인덱스를 쓴다.
+- localStorage 용량(약 5MB)을 넘는 큰 저장소는 앱이 켜져 있는 동안 메모리 캐시만 쓴다. 앱을 다시 켜면 처음 검색할 때 한 번 받는다.
+- Claude의 `search` 도구도 같은 인덱스를 쓴다. 받는 중이면 다 받을 때까지 기다렸다가 답한다.
 
 ---
 

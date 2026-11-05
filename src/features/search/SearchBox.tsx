@@ -23,7 +23,7 @@ export function SearchBox({ onPick, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [scope, setScope] = useStoredState<"mine" | "all">("seadrive.searchScope", "all");
-  const index = useSearchIndex();
+  const index = useSearchIndex(open); // 검색창을 눌렀을 때만 받는다
   const libs = useLibraries().data ?? [];
   const sectionOf = useMemo(() => new Map(libs.map((l) => [l.id, l.section])), [libs]);
   // 내 저장소 묶음 먼저, 묶음 안에서는 검색 순위 그대로

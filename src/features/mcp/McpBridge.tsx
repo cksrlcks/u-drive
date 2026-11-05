@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { downloads } from "@/features/download/useDownloads";
-import { useSearchIndex } from "@/features/search/useSearchIndex";
+import { fetchSearchIndex } from "@/features/search/useSearchIndex";
 import { getPrefs } from "@/features/settings/appPrefs";
 import { isTauri } from "@/features/shell/platform";
 import { useUploadQueue } from "@/features/upload/useUploadQueue";
@@ -47,9 +48,7 @@ export function McpBridge(): null {
 export function McpToolProvider(): null {
   const storage = useStorage();
   const { queue } = useUploadQueue();
-  const index = useSearchIndex();
-  const indexRef = useRef(index);
-  indexRef.current = index;
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -58,7 +57,7 @@ export function McpToolProvider(): null {
       storage,
       uploads: queue,
       downloads,
-      searchIndex: () => ({ entries: indexRef.current.entries, loading: indexRef.current.loading }),
+      searchIndex: () => fetchSearchIndex(qc, storage),
       readLocalFile: async (path) => new File([await invoke<ArrayBuffer>("read_local_file", { path })], path.split(/[\\/]/).pop()!),
       freePath: (dir, name) => invoke<string>("free_path", { dir, name }),
       defaultDownloadDir,
@@ -70,6 +69,6 @@ export function McpToolProvider(): null {
     return () => {
       currentCtx = null;
     };
-  }, [storage, queue]);
+  }, [storage, queue, qc]);
   return null;
 }

@@ -10,7 +10,7 @@ function makeCtx(over: Partial<ToolCtx> = {}): ToolCtx {
     storage,
     uploads: new UploadQueue(storage),
     downloads: new DownloadQueue(async () => {}),
-    searchIndex: () => ({ entries: [], loading: false }),
+    searchIndex: async () => [],
     readLocalFile: async (p) => new File(["x"], p.split(/[\\/]/).pop()!),
     freePath: async (d, n) => `${d}/${n}`,
     defaultDownloadDir: async () => "C:/Downloads",
@@ -187,16 +187,15 @@ describe("callTool", () => {
     expect(txt(pdf)).toContain("download");
   });
 
-  it("search maps library names and flags loading", async () => {
+  it("search maps library names", async () => {
     const entries = [{ id: "1", name: "2026-10-20.md", type: "file" as const, size: 4000, mtime: 0, path: "/회의록/2026-10-20.md", libId: "docs" }];
-    const r = parse(await callTool("search", { query: "2026-10" }, makeCtx({ searchIndex: () => ({ entries, loading: true }) })));
+    const r = parse(await callTool("search", { query: "2026-10" }, makeCtx({ searchIndex: async () => entries })));
     expect(r.results).toEqual([{ library: "docs", libraryName: "문서", path: "/회의록/2026-10-20.md", type: "file", size: "3.9 KB" }]);
-    expect(r.note).toBe("색인 중이라 결과가 일부일 수 있습니다");
   });
 
   it("search skips shared libraries unless scope is all", async () => {
     const entries = [{ id: "1", name: "공유문서.md", type: "file" as const, size: 1, mtime: 0, path: "/공유문서.md", libId: "family" }];
-    const ctx = makeCtx({ searchIndex: () => ({ entries, loading: false }) });
+    const ctx = makeCtx({ searchIndex: async () => entries });
     const mine = parse(await callTool("search", { query: "공유" }, ctx));
     expect(mine.results).toEqual([]);
     expect(mine.note).toContain("scope: all");
