@@ -1,6 +1,6 @@
 import { IconArrowDown, IconArrowUp, IconFile, IconFileZip, IconFileMusic, IconCode, IconLink, IconPhoto, IconFileSpreadsheet, IconFileText, IconMovie, IconFolder } from "@tabler/icons-react";
 import { cn } from "cn";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode, type RefObject } from "react";
 import { SyncBadge } from "@/features/sync/SyncBadge";
 import type { SyncLink } from "@/features/sync/type";
 import { formatDateLong, formatSize } from "@/lib/format";
@@ -10,6 +10,7 @@ import { InlineName } from "./InlineName";
 import { uniqueName } from "./validateName";
 import { useColumnWidths, type ColKey } from "./useColumnWidths";
 import { useShellIcon } from "./useShellIcon";
+import { useWindow } from "./useWindow";
 
 export type ViewMode = "list" | "grid";
 export type SortKey = "name" | "mtime" | "size";
@@ -19,10 +20,12 @@ export interface Sort {
 }
 
 /** 폴더 먼저(이름순), 파일은 정렬 기준대로 — Finder/탐색기 관례 */
+// localeCompare와 같은 결과. 매번 콜레이터를 만들지 않아 2만 개 정렬에서 훨씬 빠르다
+const collator = new Intl.Collator();
 export function orderEntries(list: Entry[], sort: Sort): Entry[] {
   const m = sort.dir === "asc" ? 1 : -1;
-  const cmp = (a: Entry, b: Entry) => (sort.key === "name" ? a.name.localeCompare(b.name) * m : (a[sort.key] - b[sort.key]) * m);
-  const dirs = list.filter((e) => e.type === "dir").sort((a, b) => a.name.localeCompare(b.name) * (sort.key === "name" ? m : 1));
+  const cmp = (a: Entry, b: Entry) => (sort.key === "name" ? collator.compare(a.name, b.name) * m : (a[sort.key] - b[sort.key]) * m);
+  const dirs = list.filter((e) => e.type === "dir").sort((a, b) => collator.compare(a.name, b.name) * (sort.key === "name" ? m : 1));
   const files = list.filter((e) => e.type === "file").sort(cmp);
   return [...dirs, ...files];
 }
@@ -75,6 +78,8 @@ export function EntryIcon({ entry, className, size = 16, fallback }: { entry: En
 
 export interface ListProps {
   entries: Entry[];
+  /** 목록을 감싼 스크롤 영역. 화면 근처 줄만 그리는 데 쓴다 */
+  scrollRef: RefObject<HTMLElement | null>;
   /** 공유 링크가 있는 항목의 경로. 이름 옆(목록)·아이콘 모서리(그리드)에 표시 */
   sharedPaths?: Set<string>;
   /** 동기화 폴더의 드라이브 경로 → 연결(지금 저장소만). 폴더 아이콘에 배지 */
@@ -100,9 +105,20 @@ export interface ListProps {
   onOpenParent?(): void;
 }
 
-/** 표 보기: 24px 머리글, 28px 행, 줄무늬, 전체 행 선택 */
+// 머리글 h-7, 행 h-8.5(px). 화면 근처 줄 계산용이라 클래스와 맞춰야 한다
+const HEAD_H = 28;
+const ROW_H = 34;
+
+/** 표 보기: 28px 머리글, 34px 행, 줄무늬, 전체 행 선택. 화면 근처 줄만 그린다 */
 export function FileList(p: ListProps) {
   const { widths, startResize } = useColumnWidths<ColKey>("seadrive.columns", { mtime: 176, size: 96 }, { mtime: 90, size: 64 });
+  const lead = (p.parentDir != null ? 1 : 0) + (p.creatingFolder ? 1 : 0);
+  const win = useWindow(p.scrollRef, p.entries.length, HEAD_H + lead * ROW_H, ROW_H);
+  // 키보드로 옮기거나 검색으로 고른 항목이 화면 밖이면 보이게(그려지지 않은 줄은 scrollIntoView를 못 쓴다)
+  useEffect(() => {
+    const i = p.entries.findIndex((e) => e.path === p.focusPath);
+    if (i >= 0) win.reveal(i, HEAD_H);
+  }, [p.focusPath]);
   return (
     <table className="w-full table-fixed border-collapse text-sm">
       <colgroup>
@@ -148,7 +164,9 @@ export function FileList(p: ListProps) {
             </td>
           </tr>
         )}
-        {p.entries.map((e, i) => {
+        {win.start > 0 && <tr aria-hidden style={{ height: win.start * ROW_H }} />}
+        {p.entries.slice(win.start, win.end).map((e, k) => {
+          const i = win.start + k;
           const sel = p.selected.has(e.path);
           return (
             <EntryContextMenu
@@ -194,6 +212,7 @@ export function FileList(p: ListProps) {
             </EntryContextMenu>
           );
         })}
+        {win.end < p.entries.length && <tr aria-hidden style={{ height: (p.entries.length - win.end) * ROW_H }} />}
       </tbody>
     </table>
   );

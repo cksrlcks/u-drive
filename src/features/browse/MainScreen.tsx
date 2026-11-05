@@ -241,7 +241,7 @@ export function MainScreen() {
   const problem = allLinks.filter((l) => isSyncProblem(linkStates[l.id]?.status ?? "idle"));
   const syncNote = [syncing.length > 0 && `동기화 중 ${syncing.reduce((a, l) => a + linkStates[l.id].pending, 0)}개`, problem.length > 0 && `동기화 오류 ${problem.length}건`].filter(Boolean).join(" · ");
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const previewable = entries.filter((e) => e.type === "file" && previewKind(e.name) !== null);
+  const previewable = useMemo(() => entries.filter((e) => e.type === "file" && previewKind(e.name) !== null), [entries]);
   const previewIndex = previewable.findIndex((e) => e.path === previewPath);
 
   function open(entry: Entry) {
@@ -275,8 +275,7 @@ export function MainScreen() {
       const t = entries[Math.max(0, Math.min(entries.length - 1, i))];
       if (!t) return;
       if (e.shiftKey) select(t, { ctrlKey: false, metaKey: false, shiftKey: true });
-      else select(t, { ctrlKey: false, metaKey: false, shiftKey: false });
-      listRef.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(t.path)}"]`)?.scrollIntoView({ block: "nearest" });
+      else select(t, { ctrlKey: false, metaKey: false, shiftKey: false }); // 화면 밖이면 목록이 focusPath를 보고 스크롤한다
     };
     const mod = e.ctrlKey || e.metaKey;
     // 아이콘 보기: ↑↓는 한 줄(열 개수만큼), ←→는 한 칸 — 탐색기와 같다
@@ -324,6 +323,7 @@ export function MainScreen() {
 
   const listProps = {
     entries,
+    scrollRef: listRef,
     sharedPaths,
     syncLinks,
     sort,

@@ -247,12 +247,16 @@ function NavButton({ side, onClick }: { side: "left" | "right"; onClick(): void 
   );
 }
 
+// 지금 파일 앞뒤로 이만큼만 그린다. 2만 장 폴더에서 칸마다 썸네일 훅이 붙어 열기·넘기기가 느려졌다
+const STRIP_AROUND = 50;
+
 function Filmstrip({ libId, entries, index, onNavigate }: { libId: string; entries: Entry[]; index: number; onNavigate(i: number): void }) {
+  const from = Math.max(0, index - STRIP_AROUND);
   return (
     <div className="h-20 shrink-0 overflow-x-auto border-t border-border px-3">
       <div className="mx-auto flex h-full w-max items-center gap-1.5">
-        {entries.map((e, i) => (
-          <Thumb key={e.path} libId={libId} entry={e} active={i === index} onClick={() => onNavigate(i)} />
+        {entries.slice(from, index + STRIP_AROUND + 1).map((e, k) => (
+          <Thumb key={e.path} libId={libId} entry={e} active={from + k === index} onClick={() => onNavigate(from + k)} />
         ))}
       </div>
     </div>
