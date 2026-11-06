@@ -15,6 +15,7 @@ export function loginErrorMessage(e: unknown): LoginErrorInfo {
   if (e.kind === "unauthorized" || (e.status === 400 && body.includes("credentials"))) {
     return { message: "아이디 또는 비밀번호가 틀렸습니다", otpRequired: false };
   }
+  if (e.kind === "certificate") return { message: `서버 인증서를 신뢰할 수 없습니다. 관리자에게 받은 CA 인증서를 설치하세요 (${e.message})`, otpRequired: false };
   if (e.kind === "network") return { message: "서버에 연결할 수 없습니다. 서버 주소와 CORS 설정을 확인하세요", otpRequired: false };
   return { message: `서버 오류 (${e.status ?? ""})`, otpRequired: false };
 }

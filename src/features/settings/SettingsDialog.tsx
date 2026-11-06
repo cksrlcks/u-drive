@@ -165,7 +165,7 @@ function AccountPage() {
         </Row>
         {/* 일반 사용자용 비밀번호 변경 API가 없어서 서버 웹 설정 페이지를 브라우저로 연다 */}
         <Row title="비밀번호" desc="웹 설정 페이지에서 바꿉니다">
-          <button type="button" disabled={connection.kind === "mock"} onClick={() => openExternal(`${connection.baseUrl}/profile/`)} className={btnOutline}>
+          <button type="button" disabled={connection.kind === "mock"} onClick={() => openExternal(`${connection.baseUrl}${connection.kind === "waple" ? "/account" : "/profile/"}`)} className={btnOutline}>
             비밀번호 변경
           </button>
         </Row>

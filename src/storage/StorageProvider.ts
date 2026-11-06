@@ -84,7 +84,8 @@ export interface TrashEntry {
   commitId: string;
 }
 
-export type StorageErrorKind = "unauthorized" | "notFound" | "network" | "server";
+/** certificate: TLS 인증서를 신뢰할 수 없음(network 의 세분화. message = CA 인증서 주소). 로그인 화면만 구분해 보여 준다 */
+export type StorageErrorKind = "unauthorized" | "notFound" | "network" | "server" | "certificate";
 
 export class StorageError extends Error {
   constructor(
@@ -98,8 +99,8 @@ export class StorageError extends Error {
 }
 
 export interface Connection {
-  /** "mock"은 개발·화면 확인용 (서버 없음) */
-  kind: "seafile" | "mock";
+  /** "mock"은 개발·화면 확인용 (서버 없음). "waple"은 Waple Drive 서버(ping 헤더로 자동 판별) */
+  kind: "seafile" | "waple" | "mock";
   baseUrl: string;
 }
 

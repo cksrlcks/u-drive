@@ -20,6 +20,10 @@ describe("loginErrorMessage", () => {
   it("explains network failures with the CORS hint", () => {
     expect(loginErrorMessage(new StorageError("network", "Failed to fetch")).message).toBe("서버에 연결할 수 없습니다. 서버 주소와 CORS 설정을 확인하세요");
   });
+  it("explains certificate failures with the CA download address", () => {
+    const e = new StorageError("certificate", "https://drive.example:8443/ca.crt");
+    expect(loginErrorMessage(e).message).toBe("서버 인증서를 신뢰할 수 없습니다. 관리자에게 받은 CA 인증서를 설치하세요 (https://drive.example:8443/ca.crt)");
+  });
   it("falls back for unknown errors", () => {
     expect(loginErrorMessage(new Error("x")).message).toBe("알 수 없는 오류가 발생했습니다");
   });

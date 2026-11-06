@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { createProvider } from "./createProvider";
+import { detectConnection } from "./detect";
+import { refineNetworkError } from "./tlsProbe";
 import { deviceInfo } from "./device";
 import { clearToken, loadSession, saveSession, type Session } from "./session";
 import type { Connection, StorageProvider } from "./StorageProvider";
@@ -21,9 +23,16 @@ export function StorageRoot({ children }: { children: ReactNode }) {
   const provider = useMemo(() => createProvider(session.connection, session.token), [session]);
 
   const login = useCallback(async (conn: Connection, username: string, password: string, otp?: string, opts?: { persistent?: boolean }) => {
-    const p = createProvider(conn, null);
-    await p.login(username, password, otp, await deviceInfo());
-    const next: Session = { connection: conn, token: p.token };
+    // 서버 종류는 사용자가 고르지 않는다: ping 헤더로 판별(판별 실패 = 기존 서버 종류)
+    const detected = await detectConnection(conn);
+    const p = createProvider(detected, null);
+    try {
+      await p.login(username, password, otp, await deviceInfo());
+    } catch (e) {
+      // 인증서 오류는 "연결 실패" 와 다르게 안내해야 하므로 Rust 로 한 번 확인한다
+      throw await refineNetworkError(e, detected.baseUrl);
+    }
+    const next: Session = { connection: detected, token: p.token };
     saveSession(next, opts);
     setSession(next);
   }, []);

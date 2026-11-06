@@ -22,6 +22,8 @@ const storageAllow = [
   /^src\/storage\/StorageProvider\.ts$/,
   /^src\/storage\/createProvider\.ts$/,
   /^src\/storage\/session\.ts$/,
+  // 서버 종류 자동 판별(ping 헤더)이 종류 이름을 돌려준다
+  /^src\/storage\/detect\.ts$/,
   // 정보 대화상자의 제품 설명 문구(사용자에게 보여 주는 이름이지 코드 분기가 아니다)
   /^src\/features\/shell\/MenuBar\.tsx$/,
 ];

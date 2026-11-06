@@ -31,6 +31,7 @@ mdns-sd = "0.21"
 gethostname = "1"
 # 바로 보내기 TLS(실행마다 새 자체 서명 인증서)와 MCP 토큰 난수
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-native-certs = "0.8"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 ring = "0.17"
 # 폴더 동기화: PC 폴더 변경 알림(ReadDirectoryChangesW/FSEvents/inotify)
