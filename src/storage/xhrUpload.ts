@@ -1,11 +1,12 @@
-import { StorageError } from "../StorageProvider";
+import { StorageError } from "./StorageProvider";
 
 const aborted = () => new DOMException("aborted", "AbortError");
 
-/** multipart POST with upload progress. fetch는 업로드 진행률을 주지 않아 XHR 사용. */
-export function xhrUpload(
+/** 업로드 진행률이 필요한 요청. fetch는 업로드 진행률을 주지 않아 XHR 사용. 2xx 면 응답 본문 텍스트. */
+export function xhrRequest(
+  method: string,
   url: string,
-  form: FormData,
+  body: Blob | FormData,
   headers: Record<string, string>,
   onProgress: (sent: number) => void,
   signal?: AbortSignal,
@@ -15,7 +16,7 @@ export function xhrUpload(
     const xhr = new XMLHttpRequest();
     const onAbort = () => xhr.abort();
     const done = () => signal?.removeEventListener("abort", onAbort);
-    xhr.open("POST", url);
+    xhr.open(method, url);
     for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = (e) => onProgress(e.loaded);
     xhr.onload = () => {
@@ -32,6 +33,17 @@ export function xhrUpload(
       reject(aborted());
     };
     signal?.addEventListener("abort", onAbort, { once: true });
-    xhr.send(form);
+    xhr.send(body);
   });
+}
+
+/** multipart POST with upload progress. */
+export function xhrUpload(
+  url: string,
+  form: FormData,
+  headers: Record<string, string>,
+  onProgress: (sent: number) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  return xhrRequest("POST", url, form, headers, onProgress, signal);
 }

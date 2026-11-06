@@ -2,10 +2,10 @@ import { StorageError, type Account, type Entry, type Library, type ShareLink, t
 import { joinPath } from "../path";
 import type { DeviceInfo } from "../device";
 import { SeafileApi } from "./api";
-import { CHUNK_SIZE, chunkRanges } from "./chunk";
+import { CHUNK_SIZE, chunkRanges } from "../chunk";
 import { sliceOf } from "../localFile";
 import { clearInterrupted, isInterrupted, markInterrupted } from "./resumeRegistry";
-import { xhrUpload } from "./xhrUpload";
+import { xhrUpload } from "../xhrUpload";
 
 interface RepoDto { id: string; name: string; size: number; mtime: number; encrypted: boolean; head_commit_id?: string; type?: "repo" | "srepo" | "grepo"; group_name?: string; permission?: string }
 interface DirentDto { id: string; name: string; type: "file" | "dir"; size?: number; mtime: number }

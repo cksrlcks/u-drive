@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./xhrUpload", () => ({ xhrUpload: vi.fn(async () => "ok") }));
+vi.mock("../xhrUpload", () => ({ xhrUpload: vi.fn(async () => "ok") }));
 const invokeMock = vi.fn(async (_cmd: string, a: { start: number; len: number }) => new Uint8Array(a.len).fill(a.start).buffer);
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
-vi.mock("./chunk", async (orig) => ({ ...(await orig<typeof import("./chunk")>()), CHUNK_SIZE: 8 }));
+vi.mock("../chunk", async (orig) => ({ ...(await orig<typeof import("../chunk")>()), CHUNK_SIZE: 8 }));
 
 import { SeafileProvider } from "./SeafileProvider";
 import { markInterrupted, clearInterrupted } from "./resumeRegistry";
-import { xhrUpload } from "./xhrUpload";
+import { xhrUpload } from "../xhrUpload";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
