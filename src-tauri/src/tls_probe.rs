@@ -22,8 +22,8 @@ fn client_config() -> Result<Arc<ClientConfig>, String> {
     Ok(Arc::new(cfg))
 }
 
-/// "ok" | "certificate" | "unreachable"
-#[tauri::command]
+/// "ok" | "certificate" | "unreachable". 블로킹 I/O(DNS·connect·핸드셰이크)라 async 명령으로 스레드 풀에서 돈다 — 동기면 UI 스레드가 최대 9초 멈춘다
+#[tauri::command(async)]
 pub fn tls_probe(host: String, port: u16) -> String {
     let Ok(addrs) = (host.as_str(), port).to_socket_addrs() else { return "unreachable".into() };
     let Some(addr) = addrs.into_iter().next() else { return "unreachable".into() };
