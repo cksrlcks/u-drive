@@ -27,6 +27,7 @@
     "allow-file-icon",
     "allow-quit",
     "allow-device-name",
+    "allow-tls-probe",
     "allow-set-prefs",
     "allow-free-path",
     "allow-append-log",

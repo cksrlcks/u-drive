@@ -5,6 +5,7 @@ const COMMANDS: &[&str] = &[
     "file_icon",
     "quit",
     "device_name",
+    "tls_probe",
     "set_prefs",
     "free_path",
     "append_log",

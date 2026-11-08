@@ -19,7 +19,11 @@ export async function probeTls(baseUrl: string): Promise<TlsProbe | null> {
   if (u.protocol !== "https:") return null;
   const { invoke } = await import("@tauri-apps/api/core");
   const port = u.port ? Number(u.port) : 443;
-  return invoke<TlsProbe>("tls_probe", { host: u.hostname, port }).catch(() => null);
+  // 거부(예: 명령이 ACL 에 없음)는 null → 원래 네트워크 문구. 원인을 찾을 수 있게 콘솔에는 남긴다
+  return invoke<TlsProbe>("tls_probe", { host: u.hostname, port }).catch((err: unknown) => {
+    console.warn("tls_probe failed", err);
+    return null;
+  });
 }
 
 /** 앱이 안내할 CA 인증서 주소 */
