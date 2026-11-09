@@ -55,9 +55,14 @@ export function useEntryActions(loc: Location) {
       return qc.invalidateQueries({ queryKey: ["dir", libId] });
     },
   });
-  /** 파일 1개는 저장 위치 선택, 여러 개는 폴더 선택. 실제 전송은 다운로드 패널에서 진행 */
+  /** 파일 1개는 저장 위치 선택, 여러 개·폴더는 폴더 선택. 실제 전송은 다운로드 패널에서 진행 */
   const download = useMutation({
-    mutationFn: (entries: Entry[]) => downloadEntries(entries, (e) => storage.downloadUrl(libId, e.path)),
+    mutationFn: (entries: Entry[]) =>
+      downloadEntries(
+        entries,
+        (e) => storage.downloadUrl(libId, e.path),
+        (p) => storage.listDir(libId, p),
+      ),
   });
 
   const labels = { mkdir: "새 폴더를 만들지 못했습니다", rename: "이름을 바꾸지 못했습니다", remove: "삭제하지 못했습니다", move: "옮기지 못했습니다", download: "다운로드를 시작하지 못했습니다" };

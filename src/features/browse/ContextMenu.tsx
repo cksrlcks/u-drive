@@ -1,6 +1,7 @@
 import { IconBuildingBroadcastTower, IconDownload, IconPencil, IconTrash } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { ContextMenu as Root, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { isTauri } from "@/features/shell/platform";
 import { SyncMenuItems } from "@/features/sync/SyncMenuItems";
 import type { SyncLink } from "@/features/sync/type";
 import type { Entry } from "@/storage/StorageProvider";
@@ -43,9 +44,9 @@ export function EntryContextMenu({ entry, actions, children, asRow, className, o
           열기
           <ContextMenuShortcut>Enter</ContextMenuShortcut>
         </ContextMenuItem>
-        {entry.type === "file" && (
+        {(entry.type === "file" || isTauri()) && (
           <ContextMenuItem onClick={() => actions.onDownload(entry)} className="text-sm">
-            <IconDownload className="size-4" /> 다운로드
+            <IconDownload className="size-4" /> {entry.type === "dir" ? "폴더 받기" : "다운로드"}
           </ContextMenuItem>
         )}
         <ContextMenuItem disabled={!actions.onRename} onClick={() => actions.onRename?.(entry)} className="text-sm">

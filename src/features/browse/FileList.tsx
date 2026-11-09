@@ -160,7 +160,7 @@ export function FileList(p: ListProps) {
               className={cn(
                 "h-8.5 cursor-default select-none",
                 (i + (p.parentDir != null ? 1 : 0)) % 2 === 1 && !sel && "bg-muted/60", // "..." 줄까지 이어서 줄무늬
-                sel && "bg-selection",
+                sel ? "bg-selection" : "hover:bg-accent",
                 p.focusPath === e.path && "outline-1 -outline-offset-1 outline-primary/60",
                 p.dropTarget === e.path && "bg-primary/10 outline-2 -outline-offset-2 outline-primary",
               )}
