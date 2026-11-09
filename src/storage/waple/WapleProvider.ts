@@ -1,4 +1,4 @@
-import { StorageError, type Account, type Entry, type Library, type ShareLink, type ShareLinkInfo, type StorageProvider, type TrashEntry, type UploadTask } from "../StorageProvider";
+import { StorageError, type Account, type Entry, type Library, type StorageProvider, type TrashEntry, type UploadTask } from "../StorageProvider";
 import type { DeviceInfo } from "../device";
 import { sliceOf } from "../localFile";
 import { joinPath } from "../path";
@@ -7,7 +7,6 @@ import { xhrRequest } from "../xhrUpload";
 import { WapleApi } from "./api";
 
 interface LibraryDto { id: string; name: string; size: number; mtime: number; head_commit_id: string; section: "own" | "shared"; starred: boolean; permission: "rw" | "r"; encrypted?: boolean }
-interface ShareLinkDto { token: string; url: string; repo_id: string; repo_name: string; path: string; name: string; type: "file" | "dir"; expires_at: number | null; expired: boolean; protected: boolean; views: number; created_at: number }
 interface TrashDto { name: string; type: "file" | "dir"; size: number; parent_dir: string; deleted_at: number; commit_id: string }
 interface SessionDto { session_id: string; received_bytes: number }
 
@@ -175,36 +174,6 @@ export class WapleProvider implements StorageProvider {
 
   async move(libId: string, srcDir: string, names: string[], dstDir: string): Promise<void> {
     await this.api.postJson(`/api/v1/repos/${libId}/move`, { src_dir: srcDir, names, dst_dir: dstDir });
-  }
-
-  async createShareLink(libId: string, path: string, opts?: { password?: string; expireDays?: number }): Promise<ShareLink> {
-    const body: Record<string, unknown> = { repo_id: libId, path };
-    if (opts?.password) body.password = opts.password;
-    if (opts?.expireDays) body.expire_days = opts.expireDays;
-    const res = await this.api.postJson<{ url: string; expires_at: number | null }>("/api/v1/share-links", body);
-    return res.expires_at ? { url: res.url, expiresAt: res.expires_at } : { url: res.url };
-  }
-
-  async listShareLinks(): Promise<ShareLinkInfo[]> {
-    const rows = await this.api.get<ShareLinkDto[]>("/api/v1/share-links");
-    return rows.map((r) => ({
-      token: r.token,
-      url: r.url,
-      libId: r.repo_id,
-      libName: r.repo_name,
-      path: r.path,
-      name: r.name,
-      type: r.type,
-      expiresAt: r.expires_at ?? undefined,
-      expired: r.expired,
-      protected: r.protected,
-      views: r.views,
-      createdAt: r.created_at,
-    }));
-  }
-
-  async deleteShareLink(token: string): Promise<void> {
-    await this.api.delete(`/api/v1/share-links/${token}`);
   }
 
   async listTrash(libId: string): Promise<TrashEntry[]> {

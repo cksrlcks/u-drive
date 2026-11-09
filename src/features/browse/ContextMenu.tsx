@@ -1,4 +1,4 @@
-import { IconBuildingBroadcastTower, IconDownload, IconLink, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconBuildingBroadcastTower, IconDownload, IconPencil, IconTrash } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { ContextMenu as Root, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { SyncMenuItems } from "@/features/sync/SyncMenuItems";
@@ -10,7 +10,6 @@ export interface EntryMenuActions {
   onDownload(entry: Entry): void;
   /** 읽기 전용 저장소면 없음(메뉴 항목이 꺼진다) */
   onRename?(entry: Entry): void;
-  onShare?(entry: Entry): void;
   /** 바로 보내기. 설치된 앱에서만 */
   onNearby?(entry: Entry): void;
   onDelete?(entry: Entry): void;
@@ -58,9 +57,6 @@ export function EntryContextMenu({ entry, actions, children, asRow, className, o
             <IconBuildingBroadcastTower className="size-4" /> 바로 보내기…
           </ContextMenuItem>
         )}
-        <ContextMenuItem disabled={!actions.onShare} onClick={() => actions.onShare?.(entry)} className="text-sm">
-          <IconLink className="size-4" /> 공유 링크
-        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" disabled={!actions.onDelete} onClick={() => actions.onDelete?.(entry)} className="text-sm">
           <IconTrash className="size-4" /> 삭제

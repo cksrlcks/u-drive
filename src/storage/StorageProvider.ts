@@ -50,29 +50,6 @@ export interface Account {
   quota: number | null;
 }
 
-export interface ShareLink {
-  url: string;
-  expiresAt?: number;
-}
-
-/** 내가 만든 공유 링크 */
-export interface ShareLinkInfo {
-  /** 삭제에 쓰는 서버 식별자 */
-  token: string;
-  url: string;
-  libId: string;
-  libName: string;
-  path: string;
-  name: string;
-  type: "file" | "dir";
-  expiresAt?: number;
-  expired: boolean;
-  /** 비밀번호가 걸려 있음 */
-  protected: boolean;
-  views: number;
-  createdAt: number;
-}
-
 /** 휴지통 항목. 복구하면 parentDir로 돌아간다 */
 export interface TrashEntry {
   name: string;
@@ -140,15 +117,6 @@ export interface StorageProvider {
   remove(libId: string, path: string, type: "file" | "dir"): Promise<void>;
   /** 같은 저장소 안에서 srcDir의 names를 dstDir로 옮긴다. 같은 이름 확인은 호출하는 쪽 몫 */
   move(libId: string, srcDir: string, names: string[], dstDir: string): Promise<void>;
-
-  createShareLink(
-    libId: string,
-    path: string,
-    opts?: { password?: string; expireDays?: number },
-  ): Promise<ShareLink>;
-
-  listShareLinks(): Promise<ShareLinkInfo[]>;
-  deleteShareLink(token: string): Promise<void>;
 
   listTrash(libId: string): Promise<TrashEntry[]>;
   restoreTrash(libId: string, entry: TrashEntry): Promise<void>;

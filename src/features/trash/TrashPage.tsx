@@ -11,7 +11,7 @@ import { joinPath } from "@/storage/path";
 import type { TrashEntry } from "@/storage/StorageProvider";
 
 /**
- * 현재 저장소의 휴지통 페이지(사이드바 하단 메뉴). 공유 링크 페이지와 같은 표 모양.
+ * 현재 저장소의 휴지통 페이지(사이드바 하단 메뉴).
  * 복구하면 원래 폴더로 돌아간다. 항목별 영구 삭제는 서버가 지원하지 않아 전체 비우기만 있다(확인창).
  */
 export function TrashPage({ libId, readOnly }: { libId: string; readOnly: boolean }) {

@@ -135,25 +135,6 @@ describe("WapleProvider", () => {
     expect(bodyOf(lastCall())).toEqual({ src_dir: "/src", names: ["x", "y"], dst_dir: "/dst" });
   });
 
-  it("share links map fields", async () => {
-    fetchMock.mockResolvedValue(json({ token: "tk", url: "https://host.example:8443/s/tk", expires_at: 1_800_000_000 }, 201));
-    expect(await p().createShareLink("r", "/a.txt", { password: "pw", expireDays: 7 })).toEqual({ url: "https://host.example:8443/s/tk", expiresAt: 1_800_000_000 });
-    expect(bodyOf(lastCall())).toEqual({ repo_id: "r", path: "/a.txt", password: "pw", expire_days: 7 });
-    fetchMock.mockResolvedValue(json({ token: "tk", url: "u", expires_at: null }, 201));
-    expect(await p().createShareLink("r", "/a.txt")).toEqual({ url: "u" });
-    expect(bodyOf(lastCall())).toEqual({ repo_id: "r", path: "/a.txt" });
-    fetchMock.mockResolvedValue(
-      json([{ token: "tk", url: "u", repo_id: "r", repo_name: "R", path: "/a.txt", name: "a.txt", type: "file", expires_at: null, expired: false, protected: true, views: 3, created_at: 5 }]),
-    );
-    expect(await p().listShareLinks()).toEqual([
-      { token: "tk", url: "u", libId: "r", libName: "R", path: "/a.txt", name: "a.txt", type: "file", expiresAt: undefined, expired: false, protected: true, views: 3, createdAt: 5 },
-    ]);
-    fetchMock.mockResolvedValue(empty());
-    await p().deleteShareLink("tk");
-    expect(lastCall()[0]).toBe("https://host.example:8443/api/v1/share-links/tk");
-    expect(lastCall()[1].method).toBe("DELETE");
-  });
-
   it("trash maps fields and restore sends commit_id + full path", async () => {
     fetchMock.mockResolvedValue(json([{ name: "a.txt", type: "file", size: 9, parent_dir: "/docs", deleted_at: 7, commit_id: "c1" }]));
     const list = await p().listTrash("r");

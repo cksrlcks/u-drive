@@ -1,4 +1,4 @@
-import { IconArrowDown, IconArrowUp, IconFile, IconFileZip, IconFileMusic, IconCode, IconLink, IconPhoto, IconFileSpreadsheet, IconFileText, IconMovie, IconFolder } from "@tabler/icons-react";
+import { IconArrowDown, IconArrowUp, IconFile, IconFileZip, IconFileMusic, IconCode, IconPhoto, IconFileSpreadsheet, IconFileText, IconMovie, IconFolder } from "@tabler/icons-react";
 import { cn } from "cn";
 import { useEffect, type ReactNode, type RefObject } from "react";
 import { SyncBadge } from "@/features/sync/SyncBadge";
@@ -40,15 +40,6 @@ const ICONS: Record<string, typeof IconFile> = {
   js: IconCode, ts: IconCode, tsx: IconCode, jsx: IconCode, py: IconCode, rs: IconCode, go: IconCode, json: IconCode, html: IconCode, css: IconCode, sh: IconCode,
 };
 
-/** 공유 링크가 있는 항목의 아이콘 모서리 배지(탐색기의 공유 오버레이처럼) */
-export function SharedBadge({ className }: { className?: string }) {
-  return (
-    <span className={cn("absolute flex size-4 items-center justify-center rounded-full bg-card shadow-item", className)} aria-label="공유 링크 있음">
-      <IconLink className="size-2.5 text-primary" stroke={2.5} />
-    </span>
-  );
-}
-
 /** 상위 폴더("...") 항목의 폴더 아이콘 모서리 배지. 채운 원 안에 위 화살표 */
 export function UpBadge({ className, iconClassName }: { className?: string; iconClassName?: string }) {
   return (
@@ -80,8 +71,6 @@ export interface ListProps {
   entries: Entry[];
   /** 목록을 감싼 스크롤 영역. 화면 근처 줄만 그리는 데 쓴다 */
   scrollRef: RefObject<HTMLElement | null>;
-  /** 공유 링크가 있는 항목의 경로. 이름 옆(목록)·아이콘 모서리(그리드)에 표시 */
-  sharedPaths?: Set<string>;
   /** 동기화 폴더의 드라이브 경로 → 연결(지금 저장소만). 폴더 아이콘에 배지 */
   syncLinks?: Map<string, SyncLink>;
   sort: Sort;
@@ -123,19 +112,12 @@ export function FileList(p: ListProps) {
     <table className="w-full table-fixed border-collapse text-sm">
       <colgroup>
         <col />
-        <col style={{ width: 32 }} />
         <col style={{ width: widths.mtime }} />
         <col style={{ width: widths.size }} />
       </colgroup>
       <thead className="sticky top-0 z-10 bg-background">
         <tr className="h-7 border-b border-border text-2xs text-muted-foreground">
-          <Th label="이름" k="name" sort={p.sort} onSort={p.onSort} className="pl-3" />
-          <th aria-label="공유" className="relative">
-            {/* 열 조절 핸들은 공유 열 오른쪽(수정일 앞)에 둔다 */}
-            <span role="separator" aria-orientation="vertical" onPointerDown={(e) => startResize("mtime", e)} className="group absolute top-0 right-0 bottom-0 z-20 w-2 translate-x-1/2 cursor-col-resize">
-              <span className="absolute top-1.5 bottom-1.5 left-1/2 w-px bg-border group-hover:bg-primary" />
-            </span>
-          </th>
+          <Th label="이름" k="name" sort={p.sort} onSort={p.onSort} className="pl-3" resize="mtime" onResize={startResize} />
           <Th label="수정일" k="mtime" sort={p.sort} onSort={p.onSort} className="pl-3" resize="size" onResize={startResize} />
           <Th label="크기" k="size" sort={p.sort} onSort={p.onSort} className="pr-3 pl-3 text-right" />
         </tr>
@@ -143,7 +125,7 @@ export function FileList(p: ListProps) {
       <tbody>
         {p.parentDir != null && (
           <tr data-drop={p.parentDir} title="상위 폴더" onDoubleClick={p.onOpenParent} className={cn("h-8.5 cursor-default select-none", p.dropTarget === p.parentDir && "bg-primary/10 outline-2 -outline-offset-2 outline-primary")}>
-            <td className="pl-3" colSpan={4}>
+            <td className="pl-3" colSpan={3}>
               <span className="flex items-center gap-2">
                 <span className="relative shrink-0">
                   <EntryIcon entry={NEW_FOLDER_ENTRY} />
@@ -156,7 +138,7 @@ export function FileList(p: ListProps) {
         )}
         {p.creatingFolder && (
           <tr className="h-8.5">
-            <td className="pl-3" colSpan={4}>
+            <td className="pl-3" colSpan={3}>
               <span className="flex items-center gap-2">
                 <EntryIcon entry={NEW_FOLDER_ENTRY} />
                 <InlineName initial={uniqueName("새 폴더", p.existingNames)} existing={p.existingNames} create onSubmit={p.onCreateFolder} onCancel={p.onCreateFolderCancel} className="h-6 max-w-xs text-sm md:text-sm" />
@@ -199,13 +181,6 @@ export function FileList(p: ListProps) {
                     <span className="truncate">{e.name}</span>
                   )}
                 </span>
-              </td>
-              <td>
-                {p.sharedPaths?.has(e.path) && (
-                  <span className="flex items-center justify-center">
-                    <IconLink className="size-4 text-success" stroke={2} aria-label="공유 링크 있음" />
-                  </span>
-                )}
               </td>
               <td className="truncate pl-3 text-muted-foreground">{formatDateLong(e.mtime)}</td>
               <td className="truncate pr-3 pl-3 text-right text-muted-foreground tabular-nums">{e.type === "file" ? formatSize(e.size) : ""}</td>

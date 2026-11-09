@@ -17,16 +17,15 @@ interface Props {
   root: boolean;
   entries: Entry[];
   selected: Entry[];
-  sharedPaths?: Set<string>;
   syncLinks?: Map<string, SyncLink>;
 }
 
 /** 탐색기 "세부 정보 창": 선택 하나면 미리보기+속성, 여럿이면 개수·합계, 없으면 현재 폴더 요약 */
-export function DetailsPanel({ libId, libName, folderName, root, entries, selected, sharedPaths, syncLinks }: Props) {
+export function DetailsPanel({ libId, libName, folderName, root, entries, selected, syncLinks }: Props) {
   return (
     <aside className="flex w-70 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-sidebar p-4 text-sm">
       {selected.length === 1 ? (
-        <Single libId={libId} libName={libName} entry={selected[0]} shared={!!sharedPaths?.has(selected[0].path)} sync={syncLinks?.get(selected[0].path)} />
+        <Single libId={libId} libName={libName} entry={selected[0]} sync={syncLinks?.get(selected[0].path)} />
       ) : selected.length > 1 ? (
         <Summary title={`${selected.length}개 항목 선택됨`} items={selected} />
       ) : (
@@ -36,7 +35,7 @@ export function DetailsPanel({ libId, libName, folderName, root, entries, select
   );
 }
 
-function Single({ libId, libName, entry, shared, sync }: { libId: string | null; libName: string; entry: Entry; shared: boolean; sync?: SyncLink }) {
+function Single({ libId, libName, entry, sync }: { libId: string | null; libName: string; entry: Entry; sync?: SyncLink }) {
   const [ref, thumb] = useThumbnail(libId, entry, 256);
   const dir = entry.type === "dir";
   const ext = !dir && entry.name.includes(".") ? entry.name.split(".").pop()!.toUpperCase() : "";
@@ -56,7 +55,6 @@ function Single({ libId, libName, entry, shared, sync }: { libId: string | null;
         {!dir && <Row label="크기">{formatSize(entry.size)}</Row>}
         <Row label="수정한 날짜">{formatDate(entry.mtime)}</Row>
         <Row label="위치">{parent === "/" ? libName : `${libName}${parent}`}</Row>
-        <Row label="공유 링크">{shared ? "있음" : "없음"}</Row>
       </dl>
       {sync && <SyncDetails link={sync} />}
     </>

@@ -127,25 +127,6 @@ describe("SeafileProvider file operations", () => {
   });
 });
 
-describe("SeafileProvider.createShareLink", () => {
-  it("posts form and maps link", async () => {
-    fetchMock.mockResolvedValue(json({ link: "https://x/d/abc/", expire_date: "2026-11-02T00:00:00+09:00" }));
-    const res = await new SeafileProvider("https://host.example", "t").createShareLink("r", "/a.txt", { expireDays: 7 });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://host.example/api/v2.1/share-links/");
-    expect(String(init.body)).toBe("repo_id=r&path=%2Fa.txt&expire_days=7");
-    expect(res.url).toBe("https://x/d/abc/");
-    expect(typeof res.expiresAt).toBe("number");
-  });
-
-  it("omits expiresAt when server gives none", async () => {
-    fetchMock.mockResolvedValue(json({ link: "https://x/d/abc/", expire_date: "" }));
-    const res = await new SeafileProvider("https://host.example", "t").createShareLink("r", "/a.txt");
-    expect(res.expiresAt).toBeUndefined();
-    expect(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)).toBe("repo_id=r&path=%2Fa.txt");
-  });
-});
-
 describe("SeafileProvider.renameLibrary", () => {
   it("posts op=rename with repo_name", async () => {
     fetchMock.mockResolvedValue(json("success"));
@@ -214,31 +195,7 @@ describe("SeafileProvider listTree", () => {
   });
 });
 
-describe("SeafileProvider share links", () => {
-  it("listShareLinks maps rows", async () => {
-    fetchMock.mockResolvedValue(
-      json([{ token: "tk", link: "https://host.example/d/tk/", repo_id: "r", repo_name: "문서", path: "/a/b.txt", obj_name: "b.txt", is_dir: false, expire_date: null, is_expired: false, is_encrypted: true, view_cnt: 3, ctime: "2026-10-26T00:00:00+00:00" }]),
-    );
-    const links = await new SeafileProvider("https://host.example", "t").listShareLinks();
-    expect(links).toEqual([
-      { token: "tk", url: "https://host.example/d/tk/", libId: "r", libName: "문서", path: "/a/b.txt", name: "b.txt", type: "file", expiresAt: undefined, expired: false, protected: true, views: 3, createdAt: 1792972800 },
-    ]);
-  });
-
-  it("treats a password field as protected on servers without is_encrypted", async () => {
-    fetchMock.mockResolvedValue(json([{ token: "tk", link: "https://host.example/d/tk/", repo_id: "r", repo_name: "문서", path: "/a.txt", obj_name: "a.txt", is_dir: false, expire_date: null, is_expired: false, password: "secret-1234", view_cnt: 0, ctime: "2026-10-26T00:00:00+00:00" }]));
-    const [l] = await new SeafileProvider("https://host.example", "t").listShareLinks();
-    expect(l.protected).toBe(true);
-  });
-
-  it("deleteShareLink deletes by token", async () => {
-    fetchMock.mockResolvedValue(new Response("", { status: 200 }));
-    await new SeafileProvider("https://host.example", "t").deleteShareLink("tk");
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://host.example/api/v2.1/share-links/tk/");
-    expect(init.method).toBe("DELETE");
-  });
-
+describe("SeafileProvider.move", () => {
   it("move posts a JSON batch move within the same library", async () => {
     fetchMock.mockResolvedValue(json({ success: true }));
     await new SeafileProvider("https://host.example", "t").move("r", "/a", ["x.txt", "y"], "/a/b");

@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PreviewModal } from "@/features/preview/PreviewModal";
 import { previewKind } from "@/features/preview/previewKind";
-import { ShareDialog } from "@/features/share/ShareDialog";
-import { ShareLinksPage } from "@/features/share/ShareLinksPage";
 import { SettingsDialog, type SettingsPage } from "@/features/settings/SettingsDialog";
 import { TrashPage } from "@/features/trash/TrashPage";
 import { checkForUpdate } from "@/features/shell/updater";
@@ -205,7 +203,6 @@ export function MainScreen() {
   const askDelete = async (list: Entry[]) => {
     if (await guard(list.map((e) => e.path), "removeRoot")) setDeleting(list);
   };
-  const [sharing, setSharing] = useState<Entry | null>(null);
   const [nearbySend, setNearbySend] = useState<SendSource | null>(null);
   // 선택한 파일들(우클릭한 파일이 선택에 없으면 그 파일만). 폴더는 보내지 않는다
   const sendNearby = (e?: Entry) => {
@@ -219,21 +216,14 @@ export function MainScreen() {
     setSettingsPage(page);
     setSettingsOpen(true);
   };
-  /** 메인 영역: 파일 탐색 · 공유 링크 · 휴지통 페이지. 어디로든 이동하면 파일 탐색으로 돌아온다 */
-  const [page, setPage] = useState<"files" | "links" | "trash">("files");
+  /** 메인 영역: 파일 탐색 · 휴지통 페이지. 어디로든 이동하면 파일 탐색으로 돌아온다 */
+  const [page, setPage] = useState<"files" | "trash">("files");
   const openTrash = () => {
     setPage("trash");
     setSelected(new Set());
   };
   useEffect(() => void checkForUpdate(), []); // 시작할 때 한 번 조용히 확인
   useEffect(() => prefetchShellIcons(qc), [qc]);
-  const openLinks = () => {
-    setPage("links");
-    setSelected(new Set());
-  };
-  // 파일 목록의 공유 표시와 상태바 "링크 N개"용. 공유 링크 페이지와 같은 쿼리 키라 캐시를 같이 쓴다
-  const shareLinks = useQuery({ queryKey: ["share-links"], queryFn: () => storage.listShareLinks() });
-  const sharedPaths = useMemo(() => new Set((shareLinks.data ?? []).filter((l) => l.libId === loc.libId).map((l) => l.path)), [shareLinks.data, loc.libId]);
   const linkStates = useAllLinkStates();
   const syncLinks = useMemo(() => new Map(allLinks.filter((l) => l.libId === loc.libId).map((l) => [l.drivePath, l])), [allLinks, loc.libId]);
   const [unsyncing, setUnsyncing] = useState<SyncLink | null>(null);
@@ -253,7 +243,6 @@ export function MainScreen() {
     onOpen: open,
     onDownload: (e) => ops.download.mutate(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
     onRename: readOnly ? undefined : (e) => setRenamingPath(e.path),
-    onShare: (e) => setSharing(e),
     onNearby: isTauri() ? sendNearby : undefined,
     onDelete: readOnly ? undefined : (e) => void askDelete(selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]),
     syncMenu: isTauri() ? (e) => (syncLinks.get(e.path) ? { link: syncLinks.get(e.path)! } : undefined) : undefined,
@@ -324,7 +313,6 @@ export function MainScreen() {
   const listProps = {
     entries,
     scrollRef: listRef,
-    sharedPaths,
     syncLinks,
     sort,
     onSort,
@@ -380,7 +368,6 @@ export function MainScreen() {
           readOnly,
           hasLibrary: loc.libId !== null,
           download: () => ops.download.mutate(selectedEntries),
-          share: () => selectedEntries[0] && setSharing(selectedEntries[0]),
           rename: () => selectedEntries[0] && setRenamingPath(selectedEntries[0].path),
           remove: () => void askDelete(selectedEntries),
           selectAll: () => setSelected(new Set(entries.map((x) => x.path))),
@@ -403,10 +390,9 @@ export function MainScreen() {
           logout,
           settings: () => openSettings(),
           trash: openTrash,
-          shareLinks: openLinks,
           nearby: isTauri() ? () => sendNearby() : undefined,
         }}
-        crumbs={page === "links" ? [{ label: "공유 링크", path: loc.path }] : page === "trash" ? [{ label: `${lib?.name ?? ""} 휴지통`, path: loc.path }] : crumbs}
+        crumbs={page === "trash" ? [{ label: `${lib?.name ?? ""} 휴지통`, path: loc.path }] : crumbs}
         onNavigate={(path) => setLoc({ ...loc, path })}
         onSearchPick={(libId, e) => {
           // 폴더는 안으로, 파일은 그 폴더로 가서 해당 파일을 선택
@@ -427,7 +413,6 @@ export function MainScreen() {
               width={sidebar.width}
               onTrash={openTrash}
               page={page}
-              onShareLinks={openLinks}
               onSend={isTauri() ? () => sendNearby() : undefined}
               libraries={libs.data}
               loc={loc}
@@ -450,9 +435,7 @@ export function MainScreen() {
           {dir.error && <ErrorBanner message="폴더를 불러오지 못했습니다" onRetry={() => dir.refetch()} />}
           {ops.error && <ErrorBanner message={`${ops.error.message} (${ops.error.detail})`} actionLabel="닫기" onRetry={ops.error.reset} />}
 
-          {page === "links" ? (
-            <ShareLinksPage />
-          ) : page === "trash" && loc.libId ? (
+          {page === "trash" && loc.libId ? (
             <TrashPage libId={loc.libId} readOnly={readOnly} />
           ) : (
             <>
@@ -511,7 +494,7 @@ export function MainScreen() {
           )}
         </main>
         {detailsOpen && page === "files" && (
-          <DetailsPanel libId={loc.libId} libName={lib?.name ?? ""} folderName={crumbs[crumbs.length - 1]?.label ?? ""} root={loc.path === "/"} entries={dir.data ?? []} selected={selectedEntries} sharedPaths={sharedPaths} syncLinks={syncLinks} />
+          <DetailsPanel libId={loc.libId} libName={lib?.name ?? ""} folderName={crumbs[crumbs.length - 1]?.label ?? ""} root={loc.path === "/"} entries={dir.data ?? []} selected={selectedEntries} syncLinks={syncLinks} />
         )}
         {loc.libId && page === "files" && (
           <PreviewModal libId={loc.libId} entries={previewable} index={previewIndex} onClose={closePreview} onNavigate={(i) => setPreviewPath(previewable[i]?.path ?? null)} onDownload={(e) => ops.download.mutate([e])} />
@@ -529,13 +512,12 @@ export function MainScreen() {
 
       <StatusBar
         itemCount={page === "files" && dir.data ? dir.data.length : null}
-        note={page === "links" ? (shareLinks.data ? `링크 ${shareLinks.data.length}개` : "") : readOnly && dir.data ? `${dir.data.length}개 항목 · ${syncReadOnly ? "동기화 폴더 · 읽기 전용" : "읽기 전용"}` : syncNote ? (page === "files" && dir.data ? `${dir.data.length}개 항목 · ${syncNote}` : syncNote) : undefined}
+        note={readOnly && dir.data ? `${dir.data.length}개 항목 · ${syncReadOnly ? "동기화 폴더 · 읽기 전용" : "읽기 전용"}` : syncNote ? (page === "files" && dir.data ? `${dir.data.length}개 항목 · ${syncNote}` : syncNote) : undefined}
         onNoteClick={page === "files" && !(readOnly && dir.data) && problem.length > 0 ? () => setLoc({ libId: problem[0].libId, path: problem[0].drivePath }) : undefined}
         selectedCount={selectedEntries.length}
         selectedBytes={selectedEntries.reduce((a, e) => a + e.size, 0)}
       />
 
-      {loc.libId && <ShareDialog libId={loc.libId} entry={sharing} onClose={() => setSharing(null)} />}
       <SendDialog source={nearbySend} onClose={() => setNearbySend(null)} />
       <SettingsDialog open={settingsOpen} page={settingsPage} onClose={() => setSettingsOpen(false)} />
       {sync.dialog}

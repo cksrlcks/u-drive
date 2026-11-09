@@ -1,4 +1,4 @@
-import type { Account, Entry, Library, ShareLink, ShareLinkInfo, StorageProvider, TrashEntry, UploadTask } from "../StorageProvider";
+import type { Account, Entry, Library, StorageProvider, TrashEntry, UploadTask } from "../StorageProvider";
 import { StorageError } from "../StorageProvider";
 import { baseName, joinPath, parentPath } from "../path";
 
@@ -13,7 +13,6 @@ export class MockProvider implements StorageProvider {
   ];
   private tree = new Map<string, Entry[]>();
   private trash = new Map<string, TrashEntry[]>();
-  private links: ShareLinkInfo[] = [];
   /** 내용이 바뀔 때마다 증가. headCommitId 흉내 */
   private rev = 0;
 
@@ -231,24 +230,6 @@ export class MockProvider implements StorageProvider {
   async emptyTrash(libId: string): Promise<void> {
     await delay(150);
     this.trash.delete(libId);
-  }
-  async createShareLink(libId: string, path: string, opts?: { password?: string; expireDays?: number }): Promise<ShareLink> {
-    await delay(300);
-    const dup = this.links.find((l) => l.libId === libId && l.path === path);
-    if (dup) throw new StorageError("server", `Share link ${dup.token} already exists.`, 400); // 실제 서버와 같은 거절
-    const token = Math.random().toString(36).slice(2, 10);
-    const link: ShareLink = { url: `https://mock.example/d/${token}/`, expiresAt: opts?.expireDays ? Date.now() / 1000 + opts.expireDays * 86400 : undefined };
-    const entry = this.get(libId, parentPath(path)).find((e) => e.path === path);
-    this.links.unshift({ token, url: link.url, libId, libName: this.libs.find((l) => l.id === libId)?.name ?? libId, path, name: baseName(path), type: entry?.type ?? "file", expiresAt: link.expiresAt, expired: false, protected: !!opts?.password, views: 0, createdAt: Date.now() / 1000 });
-    return link;
-  }
-  async listShareLinks(): Promise<ShareLinkInfo[]> {
-    await delay(200);
-    return [...this.links];
-  }
-  async deleteShareLink(token: string): Promise<void> {
-    await delay(150);
-    this.links = this.links.filter((l) => l.token !== token);
   }
 }
 

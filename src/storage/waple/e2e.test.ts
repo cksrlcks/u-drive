@@ -89,14 +89,7 @@ run("WapleProvider against a live server", () => {
     expect((await p.listDir(REPO, `${dir}/dst`)).map((e) => e.name)).toEqual(["renamed.txt"]);
   });
 
-  it("share link create/list/delete and thumbnail 415 for text", async () => {
-    const link = await p.createShareLink(REPO, `${dir}/dst/renamed.txt`, { expireDays: 1 });
-    expect(link.url).toContain("/s/");
-    const mine = await p.listShareLinks();
-    const found = mine.find((l) => l.url === link.url);
-    expect(found?.type).toBe("file");
-    await p.deleteShareLink(found!.token);
-    expect((await p.listShareLinks()).some((l) => l.token === found!.token)).toBe(false);
+  it("thumbnail 415 for text", async () => {
     await expect(p.thumbnail(REPO, `${dir}/dst/renamed.txt`, 64)).rejects.toMatchObject({ status: 415 });
   });
 });

@@ -12,7 +12,7 @@ function load<K extends string>(key: string, defaults: Record<K, number>): Recor
 
 /**
  * 표 열 너비. 첫 열은 남는 공간, 나머지는 px. 머리글 오른쪽 경계를 끌면 "다음 열"의 너비가 바뀐다(탐색기 방식).
- * storageKey별로 localStorage에 기억. 파일 목록과 공유 링크 표가 각자 키로 쓴다.
+ * storageKey별로 localStorage에 기억. 표마다 각자 키를 쓴다.
  */
 export function useColumnWidths<K extends string>(storageKey: string, defaults: Record<K, number>, mins: Record<K, number>) {
   const [widths, setWidths] = useState<Record<K, number>>(() => load(storageKey, defaults));

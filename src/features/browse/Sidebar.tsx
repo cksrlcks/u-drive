@@ -1,4 +1,4 @@
-import { IconBuildingBroadcastTower, IconChevronDown, IconCloud, IconLink, IconLock, IconPencil, IconStar, IconStarOff, IconTrash } from "@tabler/icons-react";
+import { IconBuildingBroadcastTower, IconChevronDown, IconCloud, IconLock, IconPencil, IconStar, IconStarOff, IconTrash } from "@tabler/icons-react";
 import { cn } from "cn";
 import { useState, type ReactNode } from "react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -16,8 +16,7 @@ interface Props {
   /** 현재 저장소의 휴지통 열기 */
   onTrash(): void;
   /** 메인 영역에 무엇이 떠 있는지. 파일 탐색이 아니면 저장소 행을 선택 표시하지 않는다 */
-  page: "files" | "links" | "trash";
-  onShareLinks(): void;
+  page: "files" | "trash";
   /** 바로 보내기 창 열기. 설치된 앱에서만(없으면 숨김) */
   onSend?(): void;
 }
@@ -45,7 +44,7 @@ function useCollapsed() {
 }
 
 /** macOS 소스 리스트 스타일: 연회색, 11px 섹션 라벨, 28px 행, 선택은 옅은 파란 틴트. 탐색기처럼 저장소만 두고 폴더 트리는 없다 */
-export function Sidebar({ libraries, loc, onNavigate, onRenameLibrary, onStarLibrary, width, onTrash, page, onShareLinks, onSend }: Props) {
+export function Sidebar({ libraries, loc, onNavigate, onRenameLibrary, onStarLibrary, width, onTrash, page, onSend }: Props) {
   /** 이름 변경 중인 저장소 id */
   const [renaming, setRenaming] = useState<string | null>(null);
   const [collapsed, toggleSection] = useCollapsed();
@@ -100,7 +99,6 @@ export function Sidebar({ libraries, loc, onNavigate, onRenameLibrary, onStarLib
       ))}
       <div className="mt-auto border-t border-sidebar-border pt-2">
         {onSend && <Row icon={<IconBuildingBroadcastTower className="size-4" />} label="바로 보내기" title="같은 네트워크의 U-Drive 사용자에게 파일을 바로 보냅니다" onClick={onSend} />}
-        <Row icon={<IconLink className="size-4" />} label="공유 링크" selected={page === "links"} onClick={onShareLinks} />
         <Row icon={<IconTrash className="size-4" />} label="휴지통" selected={page === "trash"} disabled={loc.libId === null} title={loc.libId === null ? "저장소를 먼저 선택하세요" : undefined} onClick={onTrash} />
       </div>
     </aside>

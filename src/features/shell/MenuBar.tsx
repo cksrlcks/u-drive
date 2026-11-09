@@ -21,7 +21,6 @@ export interface MenuActions {
   /** 저장소를 골랐는가(동기화 폴더 추가는 저장소 안에서만) */
   hasLibrary: boolean;
   download(): void;
-  share(): void;
   rename(): void;
   remove(): void;
   selectAll(): void;
@@ -44,7 +43,6 @@ export interface MenuActions {
   logout(): void;
   settings(): void;
   trash(): void;
-  shareLinks(): void;
   /** 바로 보내기. 설치된 앱에서만(없으면 메뉴 항목을 숨긴다) */
   nearby?(): void;
 }
@@ -86,17 +84,11 @@ export function MenuBar(a: MenuActions) {
             <MenubarItem disabled={!a.selection.hasFile} onClick={a.download} className={item}>
               다운로드
             </MenubarItem>
-            <MenubarItem disabled={a.selection.count !== 1} onClick={a.share} className={item}>
-              공유 링크…
-            </MenubarItem>
             {a.nearby && (
               <MenubarItem onClick={a.nearby} className={item}>
                 바로 보내기…
               </MenubarItem>
             )}
-            <MenubarItem onClick={a.shareLinks} className={item}>
-              공유 링크 관리…
-            </MenubarItem>
             <MenubarItem disabled={a.readOnly || a.selection.count !== 1} onClick={a.rename} className={item}>
               이름 변경<MenubarShortcut>F2</MenubarShortcut>
             </MenubarItem>

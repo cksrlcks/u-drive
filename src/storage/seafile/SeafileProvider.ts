@@ -1,4 +1,4 @@
-import { StorageError, type Account, type Entry, type Library, type ShareLink, type ShareLinkInfo, type StorageProvider, type TrashEntry, type UploadTask } from "../StorageProvider";
+import { StorageError, type Account, type Entry, type Library, type StorageProvider, type TrashEntry, type UploadTask } from "../StorageProvider";
 import { joinPath } from "../path";
 import type { DeviceInfo } from "../device";
 import { SeafileApi } from "./api";
@@ -10,7 +10,6 @@ import { xhrUpload } from "../xhrUpload";
 interface RepoDto { id: string; name: string; size: number; mtime: number; encrypted: boolean; head_commit_id?: string; type?: "repo" | "srepo" | "grepo"; group_name?: string; permission?: string }
 interface DirentDto { id: string; name: string; type: "file" | "dir"; size?: number; mtime: number }
 interface TreeDirentDto { type: "file" | "dir"; id: string; name: string; parent_dir: string; size?: number; mtime: string | number }
-interface ShareLinkDto { token: string; link: string; repo_id: string; repo_name: string; path: string; obj_name: string; is_dir: boolean; expire_date: string | null; is_expired: boolean; is_encrypted?: boolean; password?: string | null; view_cnt: number; ctime: string }
 interface TrashDto { obj_name: string; parent_dir: string; is_dir: boolean; size?: number; deleted_time: string; commit_id: string }
 
 function isLinkExpired(e: unknown): boolean {
@@ -200,14 +199,6 @@ export class SeafileProvider implements StorageProvider {
   async move(libId: string, srcDir: string, names: string[], dstDir: string): Promise<void> {
     await this.api.postJson("/api/v2.1/repos/sync-batch-move-item/", { src_repo_id: libId, src_parent_dir: srcDir, src_dirents: names, dst_repo_id: libId, dst_parent_dir: dstDir });
   }
-  async createShareLink(libId: string, path: string, opts?: { password?: string; expireDays?: number }): Promise<ShareLink> {
-    const form: Record<string, string> = { repo_id: libId, path };
-    if (opts?.password) form.password = opts.password;
-    if (opts?.expireDays) form.expire_days = String(opts.expireDays);
-    const res = await this.api.postForm<{ link: string; expire_date?: string }>("/api/v2.1/share-links/", form);
-    const expiresAt = res.expire_date ? Date.parse(res.expire_date) / 1000 : undefined;
-    return expiresAt && !Number.isNaN(expiresAt) ? { url: res.link, expiresAt } : { url: res.link };
-  }
 
   async listTree(libId: string): Promise<Entry[]> {
     // v2.1 dir API의 recursive=1: 요청 한 번에 전체 트리. mtime은 ISO 문자열로 온다
@@ -220,28 +211,6 @@ export class SeafileProvider implements StorageProvider {
       mtime: typeof d.mtime === "number" ? d.mtime : Math.floor(Date.parse(d.mtime) / 1000) || 0,
       path: joinPath(d.parent_dir, d.name),
     }));
-  }
-
-  async listShareLinks(): Promise<ShareLinkInfo[]> {
-    const rows = await this.api.get<ShareLinkDto[]>("/api/v2.1/share-links/");
-    const sec = (iso: string | null) => (iso ? Math.floor(Date.parse(iso) / 1000) || undefined : undefined);
-    return rows.map((r) => ({
-      token: r.token,
-      url: r.link,
-      libId: r.repo_id,
-      libName: r.repo_name,
-      path: r.path,
-      name: r.obj_name,
-      type: r.is_dir ? "dir" : "file",
-      expiresAt: sec(r.expire_date),
-      expired: !!r.is_expired,
-      protected: !!r.is_encrypted || !!r.password, // 버전에 따라 is_encrypted 또는 password(소유자에게 보여 주는 값) 중 하나만 온다
-      views: r.view_cnt ?? 0,
-      createdAt: sec(r.ctime) ?? 0,
-    }));
-  }
-  async deleteShareLink(token: string): Promise<void> {
-    await this.api.delete(`/api/v2.1/share-links/${token}/`);
   }
 
   async listTrash(libId: string): Promise<TrashEntry[]> {

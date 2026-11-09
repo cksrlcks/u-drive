@@ -4,7 +4,7 @@ import { FolderGlyph } from "@/components/ui/folder-glyph";
 import { EntryContextMenu } from "./ContextMenu";
 import { SyncBadge } from "@/features/sync/SyncBadge";
 import type { Entry } from "@/storage/StorageProvider";
-import { EntryIcon, NEW_FOLDER_ENTRY, SharedBadge, UpBadge, type ListProps } from "./FileList";
+import { EntryIcon, NEW_FOLDER_ENTRY, UpBadge, type ListProps } from "./FileList";
 import { InlineName } from "./InlineName";
 import { useThumbnail } from "./useThumbnail";
 import { uniqueName } from "./validateName";
@@ -107,7 +107,7 @@ export function IconGrid(p: ListProps & { libId: string | null; iconSize: number
             onDoubleClick={() => p.renamingPath !== e.path && p.onOpen(e)}
             onContextMenu={() => !sel && p.onSelect(e, { ctrlKey: false, metaKey: false, shiftKey: false } as React.MouseEvent)}
           >
-            <GridIcon libId={p.libId} entry={e} shared={!!p.sharedPaths?.has(e.path)} syncId={p.syncLinks?.get(e.path)?.id} s={s} />
+            <GridIcon libId={p.libId} entry={e} syncId={p.syncLinks?.get(e.path)?.id} s={s} />
             {p.renamingPath === e.path ? (
               <InlineName initial={e.name} existing={p.existingNames.filter((n) => n !== e.name)} onSubmit={(n) => p.onRenameSubmit(e, n)} onCancel={p.onRenameCancel} className="h-6 text-center text-xs md:text-xs" />
             ) : (
@@ -123,7 +123,7 @@ export function IconGrid(p: ListProps & { libId: string | null; iconSize: number
 }
 
 /** 이미지면 썸네일, 아니면(또는 받는 중이면) 셸 아이콘 */
-function GridIcon({ libId, entry, shared, syncId, s }: { libId: string | null; entry: Entry; shared: boolean; syncId?: string; s: IconSize }) {
+function GridIcon({ libId, entry, syncId, s }: { libId: string | null; entry: Entry; syncId?: string; s: IconSize }) {
   const [ref, thumb] = useThumbnail(libId, entry, s.px);
   return (
     <div ref={ref} data-drag className={cn("relative flex items-center justify-center", s.box)}>
@@ -132,7 +132,6 @@ function GridIcon({ libId, entry, shared, syncId, s }: { libId: string | null; e
       ) : (
         <EntryIcon entry={entry} size={48} className={s.icon} fallback={entry.type === "dir" ? <FolderGlyph className={s.glyph} /> : undefined} />
       )}
-      {shared && <SharedBadge className="right-3 bottom-1" />}
       {syncId && <SyncBadge linkId={syncId} className="bottom-1 left-3" />}
     </div>
   );
